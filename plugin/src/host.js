@@ -737,16 +737,24 @@ const tool = {
   name: 'olap',
   description: '操控指定会话的 yh-olap 面板：写 SQL 到编辑器（含指定标签页/光标选定行）、运行、停止、读面板状态。面板需在目标会话页面打开（会话头部 OLAP 按钮呼出）。',
   parameters: {
-    action: { type: 'string', required: true, enum: ['write', 'run', 'stop', 'state', 'refresh'] },
-    sessionId: { type: 'string', description: '目标会话 id；缺省用当前会话' },
-    tabId: { type: 'number', description: '标签页序号（从 1 开始）；缺省用活动标签' },
-    sql: { type: 'string', description: 'SQL 文本（write/run 时用）' },
-    engine: { type: 'string', description: '引擎类型：1=hive 2=impala 3=clickhouse 4=doris' },
-    dsId: { type: 'number', description: '数据源 id（引擎对应的数据源）' },
-    params: { type: 'array', description: '参数数组 [{id,key,type,value}]' },
-    lines: { type: 'array', description: '只运行光标选定的行 [startLine, endLine]（1-based，闭区间）' },
-    newTab: { type: 'boolean', description: 'write 时 true 表示新建一个标签并写入（自动激活），不覆盖现有标签' },
-    timeoutSec: { type: 'number', description: 'run 等待超时秒数，默认 300' },
+    // ===== WORKSTATION: 标准 JSON Schema（顶层 type:'object' + properties + required）。
+    // 原简写映射格式（属性直接平铺）在 commandcode 等第三方模型通道上未被框架转成
+    // 标准函数 schema，模型网关报 "Invalid schema ... got 'type: null'"；
+    // 与 sqlkb 等可正常工作工具的参数格式对齐。=====
+    type: 'object',
+    properties: {
+      action: { type: 'string', enum: ['write', 'run', 'stop', 'state', 'refresh'], description: '要执行的操作' },
+      sessionId: { type: 'string', description: '目标会话 id；缺省用当前会话' },
+      tabId: { type: 'number', description: '标签页序号（从 1 开始）；缺省用活动标签' },
+      sql: { type: 'string', description: 'SQL 文本（write/run 时用）' },
+      engine: { type: 'string', description: '引擎类型：1=hive 2=impala 3=clickhouse 4=doris' },
+      dsId: { type: 'number', description: '数据源 id（引擎对应的数据源）' },
+      params: { type: 'array', items: { type: 'object', properties: { id: { type: 'number' }, key: { type: 'string' }, type: { type: 'number' }, value: { type: 'string' } } }, description: '参数数组 [{id,key,type,value}]' },
+      lines: { type: 'array', items: { type: 'number' }, description: '只运行光标选定的行 [startLine, endLine]（1-based，闭区间）' },
+      newTab: { type: 'boolean', description: 'write 时 true 表示新建一个标签并写入（自动激活），不覆盖现有标签' },
+      timeoutSec: { type: 'number', description: 'run 等待超时秒数，默认 300' },
+    },
+    required: ['action'],
   },
   output: {
     schema: { type: 'object', properties: { ok: { type: 'boolean' }, message: { type: 'string' }, data: { type: 'object', additionalProperties: true } }, additionalProperties: true },
