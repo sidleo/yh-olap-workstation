@@ -2,7 +2,7 @@
   "name": "dsh-profile-yh-olap-workstation",
   "private": true,
   "dependencies": {
-    "@sidleo3/dsh-sqlkb": "0.1.5",
+    "@sidleo3/dsh-sqlkb": "0.1.6",
     "dsh-yh-olap-workstation": "link:__PLUGIN_PATH__"
   },
   "dsh": {
