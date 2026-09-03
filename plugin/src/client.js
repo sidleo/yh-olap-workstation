@@ -741,10 +741,13 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
     }
 
     function wsScheduleSave(sid, delay) {
-      // ===== WORKSTATION: 自动保存开关 —— 只有勾选「自动保存」的标签才自动落盘 =====
+      // ===== WORKSTATION: 自动保存开关 —— 只有勾选「自动保存」的标签才自动落盘。
+      // 判断按「是否存在 autoSave 标签」而非「活动标签」：wsPersistAll 会落所有
+      // autoSave 标签（含非活动），若只查活动标签，模型 write 到非活动 autoSave
+      // 标签时会被误拦不落盘 → 刷新丢失。=====
       const stT = getStore(sid)
-      const act = stT && stT.tabs ? stT.tabs.find(function (x) { return x.id === stT.activeTab }) : null
-      if (act && act.autoSave !== true) return
+      const anyAutoSave = stT && stT.tabs ? stT.tabs.some(function (x) { return x.autoSave === true }) : false
+      if (!anyAutoSave) return
       if (wsTimers[sid]) clearTimeout(wsTimers[sid])
       wsTimers[sid] = setTimeout(function () { wsPersistAll(sid) }, delay === undefined ? 800 : delay)
     }
@@ -3720,7 +3723,14 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
               const lines = (tab.sql || '').split('\n')
               s = lines.slice(c.lines[0] - 1, c.lines[1]).join('\n')
             }
-            if (s !== undefined && s !== null) { markProgSqlSet(); tab.sql = s }
+            if (s !== undefined && s !== null) {
+              markProgSqlSet(); tab.sql = s
+              // ===== WORKSTATION: 模型 write 的 SQL 也要走自动保存（与手动输入一致）。
+              // 只改 tab.sql 不 wsScheduleSave → 刷新即丢（用户实测：开启自动保存的标签，
+              // 对话写入的 SQL 刷新网页后消失）。write 后立即落盘（不走 800ms 延迟，
+              // 防用户在落盘前就刷新）。=====
+              wsScheduleSave(sid, 200)
+            }
             bump()
           }
         } else if (c.type === 'reflect') {
