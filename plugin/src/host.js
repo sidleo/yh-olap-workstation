@@ -788,8 +788,24 @@ const tool = {
       return { ok: true, summary, data }
     }
     if (args.action === 'write') {
+      // ===== WORKSTATION: 入队前检测面板是否在线（最近上传过状态）。
+      // 面板不在线（未打开/切走/刚刷新未挂载）时，write 命令会滞留队列无人消费，
+      // 模型却收到 queued 误报"已填入"——返回明确错误让模型先让用户打开面板。
+      // 注意 panelStates 无记录 ≠ 一定不在线（挂载早期），但保守提示比假阳性好。=====
+      const last = lastState(sid)
+      if (!last) {
+        return { ok: false, error: 'OLAP 面板不在线（该会话未检测到打开的面板）。请先在页面打开/刷新该会话的 OLAP 面板（确保显示 Tab 编辑器），再重新 write。' }
+      }
+      const targetTab = args.tabId
+        ? last.tabs.find(function (t) { return t.id === args.tabId })
+        : (last.tabs.find(function (t) { return t.id === last.activeTab }) || (last.tabs && last.tabs[0]))
+      if (!targetTab && !args.newTab) {
+        return { ok: false, error: '面板在线但找不到目标标签（tabs=' + (last.tabs || []).length + '）。请用 olap state 确认标签 id 后带 tabId 重试，或 newTab:true 新建。' }
+      }
       const item = enqueue(sid, { type: 'write', tabId: args.tabId, sql: args.sql, lines: args.lines, newTab: !!args.newTab })
-      return { ok: true, summary: 'queued write to ' + sid + (args.newTab ? ' (new tab)' : (args.tabId ? ' tab ' + args.tabId : ' active tab')), data: { commandId: item.id } }
+      // 目标标签名（供模型向用户确认写到了哪个标签）
+      const tabName = targetTab ? (targetTab.name || ('Tab' + targetTab.id)) : ''
+      return { ok: true, summary: 'write 命令已入队，目标=' + (args.newTab ? '新建标签' : ('标签#' + (targetTab ? targetTab.id : '?'))) + (tabName ? '（' + tabName + '）' : '') + '，面板在线，约 1~2 秒内上屏。**注意：入队≠已上屏，请随后用 olap state 确认 SQL 已写入编辑器，若未写入请告知用户刷新面板。**', data: { commandId: item.id, targetTabId: targetTab ? targetTab.id : undefined } }
     }
     if (args.action === 'run') {
       let sqlText = args.sql
@@ -842,10 +858,10 @@ const tool = {
 const OLAP_MODE_GUIDE = [
   '[OLAP 模式] 用户正在操作 yh-olap 插件，以下行为在本次对话中持续有效：',
   '1. 目标会话的 OLAP 面板需已打开（会话头部 OLAP 按钮）。先调用 olap state 看面板状态（所有标签的 SQL/引擎/数据源/运行状态）。',
-  '2. 修改 SQL：先 olap state 读取编辑器当前 SQL（含用户手动编辑的最新内容），基于它修改，再 olap.write {tabId, sql} 写回。只按要求修改，不主动运行。',
-  '3. 新建需求：先 olap state 判断活动标签是否已有代码；有代码则 olap.write {newTab:true, sql} 新建标签，不覆盖现有。',
+  '2. 修改/填入 SQL：先 olap state 读取编辑器当前 SQL（含用户手动编辑的最新内容），基于它修改，再 olap.write {tabId, sql} 写回。**write 只返回"已入队"，不代表已上屏——write 后必须再次 olap state 验证目标标签的 sql 已变成你写入的内容**；若 state 仍显示旧值/为空，说明面板未同步（未打开/刚刷新/会话错位），应告知用户刷新面板或确认面板打开后重试，绝不能谎报"已填入"。只按要求修改，不主动运行。',
+  '3. 新建需求：先 olap state 判断活动标签是否已有代码；有代码则 olap.write {newTab:true, sql} 新建标签，不覆盖现有。新建后同样要 state 验证新标签已出现且 SQL 已写入。',
   '4. 多标签引用：olap state 返回每个标签的 #id/SQL/引擎/状态；olap state/write/run/stop 都支持 tabId（从 1 开始）指定要读取、编辑、运行的标签，缺省用活动标签。用户消息里的 @olapN 或 @TabN（N 为标签 id，如 @olap3/@Tab3=标签 #3）表示引用面板标签 #N。',
-  '5. 运行：只有用户要求运行/看结果时才 olap run（不传 sql 跑指定/活动标签；engine/dsId 自动继承面板，缺省 impala engine=2 dsId=2、hive engine=1）。',
+  '5. 运行：只有用户要求运行/看结果时才 olap run（不传 sql 跑指定/活动标签；engine/dsId 自动继承面板，缺省 impala engine=2 dsId=2、hive engine=1）。**若 run 前刚 write 过，先 state 确认 SQL 已在编辑器再 run**（避免跑到旧内容）。',
   '6. 本模式只做 SQL 编辑与执行：除非用户明确要求分析/解读，禁止对查询数据做主动分析、总结或建议；run 结果按需汇报 columns/rows/total/executeId 即可。',
   '7. 历史/下载/工单等操作也通过 olap 工具完成。',
 ].join('\n')
