@@ -3037,7 +3037,7 @@ html[style*="color-scheme: dark"]{--yh-k:#c586c0;--yh-f:#4ec9b0;--yh-s:#e6a86e;-
     const INFO_SPAN = { color: 'var(--dsw-alias-label-secondary)', fontSize: 11, flexShrink: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
 
     function ResultView(props) {
-      const { st } = props
+      const { st, sid, bump } = props
       const tab = activeTab(st)
       const r = tab.result
       if (!r) return h('div', { className: 'yh-olap-hint' }, '无结果')
@@ -3050,8 +3050,37 @@ html[style*="color-scheme: dark"]{--yh-k:#c586c0;--yh-f:#4ec9b0;--yh-s:#e6a86e;-
         }
         return row[c.key]
       }
+      // ===== WORKSTATION: 结果分页加载（服务端翻页）。
+      // getSqlResult 单次最多返回 200 行（host 端 pageSize 封顶 200），total 为查询总量。
+      // 有 executeId 的结果（本次会话执行）可继续翻页追加；历史/收藏载入的结果无
+      // executeId → 只能展示已有数据，不显示「加载更多」。
+      const hasMore = function () {
+        return !!tab.executeId && rows.length > 0 && rows.length < total
+      }
+      const loadingMore = !!tab.__loadingMore
+      const loadMore = function () {
+        if (loadingMore || !hasMore()) return
+        const pageNo = Math.floor(rows.length / 200) + 1
+        tab.__loadingMore = true
+        bump()
+        callHost('olap.result', { requestId: tab.executeId, pageNo: pageNo, pageSize: 200 }).then(function (rr) {
+          tab.__loadingMore = false
+          if (rr && rr.ok && rr.data && rr.data.list && rr.data.list.length) {
+            const more = rr.data.list
+            // 去重：服务端翻页可能重叠（同 executeId 重复取页），按整行 JSON 判重追加
+            const seen = {}
+            for (let i = 0; i < tab.result.list.length; i++) seen[JSON.stringify(tab.result.list[i])] = true
+            const fresh = more.filter(function (row) { const k = JSON.stringify(row); if (seen[k]) return false; seen[k] = true; return true })
+            tab.result.list = tab.result.list.concat(fresh)
+          }
+          bump()
+        }).catch(function () { tab.__loadingMore = false; bump() })
+      }
+      const shown = rows.length
       return h('div', { className: 'yh-olap-reswrap' },
-        h('div', { className: 'yh-olap-hint' }, '共 ' + total + ' 行（预览前 ' + rows.length + ' 行）'),
+        h('div', { className: 'yh-olap-hint' },
+          '共 ' + total + ' 行（已加载 ' + shown + ' 行）',
+          hasMore() ? h('button', { className: 'yh-olap-mini', style: { marginLeft: 8, padding: '0 8px', height: 20 }, onClick: loadMore, title: '继续取下一页（每页 200 行）' }, loadingMore ? '加载中…' : '加载更多') : null),
         h('table', { className: 'yh-olap-table' },
           h('thead', null, h('tr', null, cols.map(function (c) { return h('th', { key: c.key }, c.name) }))),
           h('tbody', null, rows.map(function (row, ri) {
@@ -3215,7 +3244,7 @@ html[style*="color-scheme: dark"]{--yh-k:#c586c0;--yh-f:#4ec9b0;--yh-s:#e6a86e;-
           })),
         h('div', { className: 'yh-olap-view' },
           bt === 'log' ? h('div', { className: 'yh-olap-log' }, renderLog(curTab)) :
-            bt === 'result' ? h(ResultView, { st: st }) :
+            bt === 'result' ? h(ResultView, { st: st, sid: sid, bump: bump }) :
               bt === 'history' ? h(HistoryView, { st: st, sid: sid, bump: bump }) :
                 h(DownloadView, { st: st, sid: sid, bump: bump })))
     }
