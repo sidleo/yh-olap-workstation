@@ -3694,7 +3694,13 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
     }
 
     function applyCommands(st, sid, cmds) {
-      const bump = function () { st.version++; emitStore(sid) }
+      // ===== WORKSTATION: bump 必须同时上传面板状态 —— 命令 apply（write/reflect/stop）
+      // 改变了面板状态，若不上传 host 的 lastState 停留旧快照，模型 olap state 读到
+      // 陈旧内容（SQL 已写入但 state 仍空）→ 误判"未写入"反复重试。
+      // 关键命令用立即上传（绕过 1s 节流）：模型 write 后马上 state 验证，节流延迟
+      // 会让 state 读到上传前的旧值。与 OlapPanel bump 的节流路径区分。=====
+      let needsFlush = false
+      const bump = function () { st.version++; emitStore(sid); needsFlush = true }
       for (const c of cmds) {
         if (c.type === 'write') {
           let tab = null
@@ -3730,6 +3736,13 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
           const tab = c.tabId ? st.tabs.find(function (t) { return t.id === c.tabId }) : activeTab(st)
           if (tab && tab.running) { tab.running = false; tab.finish = 'cancel'; tab.log = '已请求终止'; if (tab.executeId) callHost('olap.kill', { requestId: tab.executeId, engine: tab.engine, dsId: tab.dsId }); bump() }
         }
+      }
+      // 命令处理后立即上传面板状态（不走 1s 节流）：模型 write/run 后随即 state
+      // 验证，只有 host 拿到最新状态才能判"已写入"。延迟上传会让模型读到旧快照。
+      if (needsFlush) {
+        const upload = function () { uploadPanelState(getStore(sid), sid) }
+        if (uploadPending) { clearTimeout(uploadPending.timer); uploadPending = null }
+        upload()
       }
     }
 
