@@ -32,7 +32,7 @@ yh-olap profile/
 ├── start.sh / stop.sh     # 启动/停止脚本（真隔离实例）
 ├── profile/               # 独立 profile 配置源（package.template.json + cordis.yml + cordis.patch.yml）
 ├── preset/yh-data/        # 「数据分析师 & 数据工程师」agent preset（含 OLAP 知识 skill）
-├── plugin/                # dsh-yh-olap-workstation 插件（vendored yh-olap + 工作区/知识库/本地持久化/工作站布局）
+├── plugin/                # dsh-yh-olap-workstation 插件（独立实现：OLAP 工作页 + 工作站布局 + 知识库/持久化）
 │   └── src/{host.js,client.js}
 └── .dsh-home/             # （运行时生成，gitignore）独立 DSH 数据根：profiles/ 会话/ 设置/ 预设
 ```
@@ -40,20 +40,21 @@ yh-olap profile/
 ## 组件说明
 
 - **profile（独立实例）**：`dsh.profile.bundles = @deepseek-ai/dsh-base + @deepseek-ai/dsh-web-app + @sidleo3/dsh-sqlkb + dsh-yh-olap-workstation`。只挂 SQL 相关插件，不挂 lark-* / 侧栏 / 办公插件 —— 工具空间干净，不被 web 内其它插件干扰。
-- **工作站插件（dsh-yh-olap-workstation）**：以 yh-olap 为基底（vendored `src/`，逻辑与 `dsh-yh-olap` 同步），增量：
+- **工作站插件（dsh-yh-olap-workstation）**：独立实现，包含：
+  - **OLAP 工作页**：库表/收藏/编辑器/历史/下载 —— 完整的数据查询工作台（左栏四 tab：库表/收藏/工作区/知识库）。
   - **布局**：三列 —— DSH 原生 sidebar（会话选择）最左、OLAP 面板（原 details 槽）中、会话（conversation 槽）右；sidebar **默认收起**（56px 展开条，点开看会话/工作区列表，与 dsh web 一致）；OLAP/会话之间自建分隔条可调宽，启动自动展开 OLAP。
   - **本地持久化（多文件）**：`~/.yh-olap/workspace/{sql,params,notes}/` 每个 tab 一份文件，SQL/参数/便签自动保存，新会话打开自动恢复。
   - **工作区 tab**：左树新增，浏览/打开/新建/重命名/删除本地 SQL 文件。
   - **知识库 tab**：左树新增，sqlkb 的 表/示例/坑点 浏览 + 搜索 + 明细。
   - **会话切换**：用 DSH 原生 sidebar（最左列，默认收起）——不需要额外的历史会话按钮。
-- **preset（yh-data）**：数据工程师 & 数据分析师人设；SQL 安全红线、sqlkb 硬要求、优先用 `olap` 工具（yh-olap 自身 API）、永辉 OLAP 知识 skill。
+- **preset（yh-data）**：数据工程师 & 数据分析师人设；SQL 安全红线、sqlkb 硬要求、优先用 `olap` 工具（插件自身 API）、永辉 OLAP 知识 skill。
 
-## 复用与改动（重要）
+## 开发说明
 
-- `plugin/src/*.js` 是 `dsh-yh-olap` 的 vendored 副本 + 增量。上游 `dsh-yh-olap` 改动后，同步方式：
-  `cp <yh-olap>/installable/src/host.js plugin/src/host.js`，再手工合并本项目的增量（搜索 `WORKSTATION` 标记）。
-  增量区都带 `// ===== WORKSTATION: xxx =====` 注释，合并时逐个检查。
-- OLAP 执行走 **yh-olap 自己的 API**（`/api/yh-olap/rpc` + `olap` 模型工具），不直接调 `yh_bigdata` CLI。
+- 本项目是**独立项目**：不依赖任何外部 yh-olap 仓库或 installable 目录，删除外部副本后仍可完整运行（唯一外部依赖是永辉数据中台账号凭据 `~/.config/yh_bigdata/accounts.json`，属用户数据）。
+- 插件源码内带 `// ===== WORKSTATION: xxx =====` 标记的区段是本地功能说明，供按区块阅读定位。
+- OLAP 执行走 **插件自身 API**（`/api/yh-olap/rpc` + `olap` 模型工具），不直接调 `yh_bigdata` CLI。
+
 
 ## 验证流程（改 `plugin/src/*.js` 后）
 

@@ -1,13 +1,13 @@
-// dsh-yh-olap 静态安装包 Client 半（浏览器端）。
+// dsh-yh-olap-workstation 插件 Client 半（浏览器端，独立实现）。
 // DSH client 插件契约：window.__ModuleLoader__.load({ id, factory })，导出 apply/inject。
 // 注意：id 必须等于 npm 包名（clientModules 按包名匹配注册），勿随内部业务名改动。
-// 与动态版 src/client.js 同逻辑，机械移植四处差异：
+// 实现要点：
 //  ① React 经 require("react") 获取；services 经 ctx.get("slots"/"layout") 获取。
 //  ② RPC：host.call(method,args) → callHost()，fetch POST /api/yh-olap/rpc（宿主半同路径分发）。
 //  ③ 定时器：timer.timeout/interval 用原生 setTimeout/setInterval 实现（返回取消函数）。
 //  ④ 样式：apply 内把 CSS 挂一个 <style> 标签，卸载时移除。
 //
-// ── 功能区段索引（本文件 3713 行，跳转定位用）────────────────────────────
+// ── 功能区段索引（本文件 ~3800 行，跳转定位用）────────────────────────────
 //  L10-221   插件入口 apply()：CSS 注入 + 布局尽早生效
 //  L222-341  引擎词表（IMPALA/HIVE 关键字与函数）+ tokenize/highlight
 //  L343-364  makeStore()：per-session 可变全局 store 初始状态

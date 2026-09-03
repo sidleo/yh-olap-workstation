@@ -1,7 +1,7 @@
 {
   "name": "dsh-yh-olap-workstation",
   "version": "0.1.0",
-  "description": "yh-olap workstation plugin: vendored yh-olap panel + workstation layout + multi-file local persistence + sqlkb browser + history session picker.",
+  "description": "yh-olap 独立工作站插件：OLAP 工作页（库表/编辑器/历史/下载）+ 三列工作站布局 + 多文件本地持久化 + sqlkb/kb 知识库浏览 + 会话跟随。",
   "type": "module",
   "main": "./src/host.js",
   "exports": {

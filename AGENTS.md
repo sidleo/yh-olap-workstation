@@ -6,11 +6,11 @@
 
 - **独立 DSH 实例**：`profile/` 是独立 profile 配置源，`start.sh` 安装到 `$DSH_HOME/profiles/yh-olap`（`$DSH_HOME` 默认 `<本项目>/.dsh-home`，真隔离）。`dsh --profile yh-olap --port <port>` 启动。
 - **工作站插件**：`plugin/` 是 npm 包 `dsh-yh-olap-workstation`，`src/host.js`（Host）+ `src/client.js`（Client）纯 JS 静态 bundle，无构建。
-- **上游同步**：`plugin/src/*.js` 以 `dsh-yh-olap` 的 `installable/src/*.js` 为基底 vendored；本项目增量都带 `// ===== WORKSTATION: xxx =====` 标记，上游更新后 `cp` 再逐个合并标记区。
+- **独立性**：本项目是**独立项目**，代码不引用、不依赖任何外部 yh-olap 仓库/installable 目录（删除外部副本后仍可完整运行）。源码内 `// ===== WORKSTATION: xxx =====` 注释是本地功能区块标记，仅供按区块阅读定位，不代表存在外部上游。
 
 ## 架构与平台分工
 
-- **Host**（`plugin/src/host.js`）：全部网络/认证/OLAP API/`olap` 模型工具/反向命令队列（来自 yh-olap）+ **WORKSTATION 增量**：workspace 多文件持久化 RPC、sqlkb 读取 RPC、sessions 列表 RPC。客户端 RPC 统一 `POST /api/yh-olap/rpc` `{method,args}`。
+- **Host**（`plugin/src/host.js`）：全部网络/认证/OLAP API 代理、`olap` 模型工具、反向命令队列、workspace 多文件持久化 RPC、sqlkb/kb 读取 RPC、sessions 列表 RPC。客户端 RPC 统一 `POST /api/yh-olap/rpc` `{method,args}`。
 - **Client**（`plugin/src/client.js`）：`window.__ModuleLoader__.load({id:'dsh-yh-olap-workstation',...})` 导出 `{inject,apply}`；React 经 `require("react")`；RPC 用 fetch；CSS 挂 `<style>` dispose 移除。
 - **工作站布局**：CSS `!important` 重排 AppFrame 网格为三列 —— sidebar（会话选择，默认收起 56px 展开条）最左、details(OLAP) 中、conversation 右；列宽 `--yh-ws-sidebar-w`（轮询 AppFrame inline 首段同步）+ `--yh-ws-cols`（OLAP/会话，2fr 默认、可拖分隔条持久化）；启动 `ctx.layout.openDetails()` 并默认 `toggleSidebar()` 收起一次。
 - **本地持久化（多文件，per-session）**：`~/.yh-olap/workspace/<sessionId>/{sql,params,notes}/`，每 tab 三份文件（`<tabId>-<name>.sql` / `.json` / `.md`）；SQL 输入 debounce ~800ms 自动保存；**新会话没有历史文件 → 纯新状态（1 个空标签）**；切回旧会话恢复它自己的工作区。
@@ -21,7 +21,7 @@
 - 静态适配：package.json `dsh.bundle.patch=./cordis.patch.yml` + `dsh.client.inject=[runtime, ui-slots]`；`cordis.patch.yml` 的 `name` 用 npm 包名 `dsh-yh-olap-workstation`；client `load({id})` 的 id 必须等于 npm 包名。
 - **client 插件 id 必须是包名**，勿改。
 - sqlkb 数据目录 `~/.agents/sqlkb`（tables/ examples/ pitfalls/），WORKSTATION host 直接解析 front-matter 读；只读不写（写坑点走模型工具 sqlkb_create）。
-- 认证/OLAP API/深色主题色板/多光标/补全等契约沿用 `dsh-yh-olap/AGENTS.md`（见上游仓库）。
+- 认证/OLAP API 端点、深色主题色板（`--dsw-alias-*`）、多光标/补全等实现契约见本文件「架构与平台分工」与源码内注释（本项目为独立实现，不依赖外部文档目录）。
 
 ## 验证流程
 

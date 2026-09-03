@@ -1,8 +1,8 @@
-// yh-olap 静态安装包 Host 半（plain ESM，Node 端）。
-// 与动态版 src/host.js 同逻辑，机械移植三处差异：
-//  ① 网络：spawn curl 直传 argv（无 shell 引号问题；二进制下载用 -D - 拆头拿 Content-Disposition 文件名）。
-//  ② 客户端 RPC：POST /api/yh-olap/rpc 分发到 handles/queues 表（等价动态版 harness.handle 的全部方法）。
-//  ③ 模型工具：ctx.tools.register(tool)；文件读写用 node:fs（不再有沙箱 fs 服务）。
+// yh-olap 独立工作站插件 Host 半（plain ESM，Node 端，独立实现）。
+// 职责：网络/认证/OLAP API 代理 + `olap` 模型工具 + 反向命令队列 +
+//       本地工作区多文件持久化（sql/params/note）+ sqlkb/kb 只读浏览 + 会话列表。
+// 客户端 RPC 统一 POST /api/yh-olap/rpc 分发到 handles/queues/wsHandlers 表。
+// 文件读写用 node:fs；模型工具经 ctx.tools.register(tool)。
 
 import { spawn } from 'node:child_process'
 import { readFile, writeFile, mkdir, readdir, rm, rename, stat } from 'node:fs/promises'
@@ -11,9 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 
 // ===== WORKSTATION: 独立工作站插件 =====
-// 基底 = yh-olap 静态 bundle Host（v1.0.1 vendored）。
-// 增量：本地工作区多文件持久化（sql/params/note）、sqlkb 只读浏览、历史会话列表。
-// 增量区均带 `// ===== WORKSTATION:` 标记，上游同步时逐个合并。
+// 本地工作区多文件持久化（sql/params/note）、sqlkb 只读浏览、历史会话列表。
 export const name = 'yh-olap-workstation'
 export const inject = ['webServer', 'tools']
 
