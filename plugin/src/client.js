@@ -381,6 +381,9 @@ html[style*="color-scheme: dark"]{--yh-k:#c586c0;--yh-f:#4ec9b0;--yh-s:#e6a86e;-
         mcursors: [],
         // ===== WORKSTATION: 便签/工作区/知识库 状态 =====
         noteModalFor: false, noteText: '',
+        // ===== WORKSTATION: 通用对话框（自绘 confirm/input，替代 window.confirm/prompt）=====
+        // { kind:'confirm'|'input', title, message, value?, okLabel?, onOk } —— onOk 收到输入值/true
+        dlg: null,
         __colsLoading: false,
         wsTree: null, wsTreeLoaded: false,
         kb: { tab: 'tables', q: '', rows: [], loaded: false, detail: null, detailName: '', src: 'sqlkb', tree: null, treeLoaded: false, open: {}, krows: [], ksearch: '' },
@@ -1048,31 +1051,38 @@ html[style*="color-scheme: dark"]{--yh-k:#c586c0;--yh-f:#4ec9b0;--yh-s:#e6a86e;-
       showToast(st, '收藏已刷新')
     }
     function collectNewDir(st, bump, pid, pidName) {
-      const name = window.prompt('新建子目录名称（在「' + (pidName || '我的收藏') + '」下）', '')
-      if (name === null) return
-      const n = name.trim()
-      if (!n) { showToast(st, '目录名不能为空'); return }
-      callHost('olap.collect.create', { node: { nodeType: 2, pid: pid || 0, name: n } }).then(function (r) {
-        if (r && r.ok) { collectRefresh(st, st.__id, bump); showToast(st, '目录已创建') }
-        else showToast(st, '创建失败: ' + ((r && r.error) || '未知'))
-      })
+      st.dlg = { kind: 'input', title: '新建子目录', message: '在「' + (pidName || '我的收藏') + '」下创建：', placeholder: '目录名称', value: '', onOk: function (v) {
+        const n = String(v || '').trim()
+        if (!n) { showToast(st, '目录名不能为空'); return false }
+        callHost('olap.collect.create', { node: { nodeType: 2, pid: pid || 0, name: n } }).then(function (r) {
+          if (r && r.ok) { collectRefresh(st, st.__id, bump); showToast(st, '目录已创建') }
+          else showToast(st, '创建失败: ' + ((r && r.error) || '未知'))
+        })
+        return true
+      } }
+      bump()
     }
     function collectRename(st, bump, node) {
-      const name = window.prompt('重命名', node.name || '')
-      if (name === null) return
-      const n = name.trim()
-      if (!n) { showToast(st, '名称不能为空'); return }
-      callHost('olap.collect.rename', { id: node.id, newName: n }).then(function (r) {
-        if (r && r.ok) { collectRefresh(st, st.__id, bump); showToast(st, '已重命名') }
-        else showToast(st, '重命名失败: ' + ((r && r.error) || '未知'))
-      })
+      st.dlg = { kind: 'input', title: '重命名', value: node.name || '', placeholder: '新名称', onOk: function (v) {
+        const n = String(v || '').trim()
+        if (!n) { showToast(st, '名称不能为空'); return false }
+        callHost('olap.collect.rename', { id: node.id, newName: n }).then(function (r) {
+          if (r && r.ok) { collectRefresh(st, st.__id, bump); showToast(st, '已重命名') }
+          else showToast(st, '重命名失败: ' + ((r && r.error) || '未知'))
+        })
+        return true
+      } }
+      bump()
     }
     function collectDelete(st, bump, node) {
-      if (!window.confirm('删除收藏「' + (node.name || '') + '」？\n（目录会连同子节点一并删除，不可恢复）')) return
-      callHost('olap.collect.delete', { id: node.id }).then(function (r) {
-        if (r && r.ok) { collectRefresh(st, st.__id, bump); showToast(st, '已删除') }
-        else showToast(st, '删除失败: ' + ((r && r.error) || '未知'))
-      })
+      st.dlg = { kind: 'confirm', title: '删除收藏', message: '删除「' + (node.name || '') + '」？\n（目录会连同子节点一并删除，不可恢复）', okLabel: '删除', onOk: function () {
+        callHost('olap.collect.delete', { id: node.id }).then(function (r) {
+          if (r && r.ok) { collectRefresh(st, st.__id, bump); showToast(st, '已删除') }
+          else showToast(st, '删除失败: ' + ((r && r.error) || '未知'))
+        })
+        return true
+      } }
+      bump()
     }
 
     function CollectMenu(props) {
@@ -1298,9 +1308,10 @@ html[style*="color-scheme: dark"]{--yh-k:#c586c0;--yh-f:#4ec9b0;--yh-s:#e6a86e;-
             // ===== WORKSTATION: SQL 纯 id 文件重命名 = 改显示名 __name（文件名保持 id，避免改成非数字后树过滤消失）=====
             if (m.label === 'SQL' && /^\d+$/.test(m.node.name)) {
               const curNm = m.node.displayName || (function () { const tx = st.tabs.find(function (x) { return x.wsFile === m.node.name }); return tx ? tx.name : '' })()
-              const nn = window.prompt('重命名标签显示名', curNm || m.node.name)
-              if (nn && nn.trim() && nn.trim() !== curNm) {
-                const newNm = nn.trim()
+              st.dlg = { kind: 'input', title: '重命名标签显示名', value: curNm || m.node.name, placeholder: '新显示名（文件仍按 id 保存）', onOk: function (v) {
+                const newNm = String(v || '').trim()
+                if (!newNm) { showToast(st, '名称不能为空'); return false }
+                if (newNm === curNm) return true
                 callHost('ws.workspace.read', { sessionId: sid, kind: 'params', name: m.node.name }).then(function (pr) {
                   let pj = {}
                   if (pr && pr.ok) { try { const j = JSON.parse(pr.content); if (j && typeof j === 'object') pj = j } catch (e) { /* ignore */ } }
@@ -1313,25 +1324,43 @@ html[style*="color-scheme: dark"]{--yh-k:#c586c0;--yh-f:#4ec9b0;--yh-s:#e6a86e;-
                     wsRefreshTree(st, sid, bump)
                   })
                 })
-              }
+                return true
+              } }
+              bump()
               return
             }
-            const n = window.prompt('重命名', m.node.name); if (n && n.trim() && n.trim() !== m.node.name) { callHost('ws.workspace.rename', { sessionId: sid, kind: m.label === 'SQL' ? 'sql' : (m.label === '便签' ? 'note' : 'params'), from: m.node.name, to: n.trim() }).then(function (r) { if (r && r.ok) { if (m.label === 'SQL') { st.tabs.forEach(function (t) { if (t.wsFile === m.node.name) t.wsFile = n.trim() }) } showToast(st, '已重命名'); wsRefreshTree(st, sid, bump) } else showToast(st, '重命名失败') }) }
-          } },
-          { label: '删除', fn: function () { if (window.confirm('删除 ' + m.node.name + ' ？（不可恢复）')) {
-            const kinds = m.label === 'SQL' ? ['sql', 'params', 'note'] : [m.label === '便签' ? 'note' : 'params']
-            // ===== WORKSTATION: 等待所有 remove 完成再刷新树（避免 list 读到删除前的旧快照 → 残留行）=====
-            const rmJobs = kinds.map(function (k) { return callHost('ws.workspace.remove', { sessionId: sid, kind: k, name: m.node.name }) })
-            Promise.all(rmJobs).then(function () { wsRefreshTree(st, sid, bump) })
-            // ===== WORKSTATION: 删除工作区文件后，同步取消对应打开标签的自动保存状态（文件已删，不再落盘/标记）=====
-            if (m.label === 'SQL') {
-              st.tabs.forEach(function (t) {
-                if (t.wsFile === m.node.name) { t.autoSave = false; t.wsFile = undefined; t.collectId = undefined }
+            st.dlg = { kind: 'input', title: '重命名', value: m.node.name, placeholder: '新名称', onOk: function (v) {
+              const n = String(v || '').trim()
+              if (!n) { showToast(st, '名称不能为空'); return false }
+              if (n === m.node.name) return true
+              callHost('ws.workspace.rename', { sessionId: sid, kind: m.label === 'SQL' ? 'sql' : (m.label === '便签' ? 'note' : 'params'), from: m.node.name, to: n }).then(function (r) {
+                if (r && r.ok) {
+                  if (m.label === 'SQL') { st.tabs.forEach(function (t) { if (t.wsFile === m.node.name) t.wsFile = n }) }
+                  showToast(st, '已重命名'); wsRefreshTree(st, sid, bump)
+                } else showToast(st, '重命名失败')
               })
-              if (st.__wsKnownFiles) st.__wsKnownFiles.delete(String(m.node.name))
-            }
+              return true
+            } }
             bump()
-          } } },
+          } },
+          { label: '删除', fn: function () {
+            st.dlg = { kind: 'confirm', title: '删除工作区项', message: '删除 ' + (m.node.displayName || m.node.name) + ' ？（不可恢复）', okLabel: '删除', onOk: function () {
+              const kinds = m.label === 'SQL' ? ['sql', 'params', 'note'] : [m.label === '便签' ? 'note' : 'params']
+              // ===== WORKSTATION: 等待所有 remove 完成再刷新树（避免 list 读到删除前的旧快照 → 残留行）=====
+              const rmJobs = kinds.map(function (k) { return callHost('ws.workspace.remove', { sessionId: sid, kind: k, name: m.node.name }) })
+              Promise.all(rmJobs).then(function () { wsRefreshTree(st, sid, bump) })
+              // ===== WORKSTATION: 删除工作区文件后，同步取消对应打开标签的自动保存状态（文件已删，不再落盘/标记）=====
+              if (m.label === 'SQL') {
+                st.tabs.forEach(function (t) {
+                  if (t.wsFile === m.node.name) { t.autoSave = false; t.wsFile = undefined; t.collectId = undefined }
+                })
+                if (st.__wsKnownFiles) st.__wsKnownFiles.delete(String(m.node.name))
+              }
+              bump()
+              return true
+            } }
+            bump()
+          } },
         ]
         return h('div', { className: 'yh-ws-cmenu', style: { left: Math.min(m.x, window.innerWidth - 150), top: Math.min(m.y, window.innerHeight - 120) } },
           menuRows.map(function (r) { return h('div', { onClick: function () { act(r.fn) } }, r.label) }))
@@ -1449,6 +1478,49 @@ html[style*="color-scheme: dark"]{--yh-k:#c586c0;--yh-f:#4ec9b0;--yh-s:#e6a86e;-
             h('span', { className: 'yh-olap-fname' }, row.name),
             h('span', { className: 'yh-olap-fcmt' }, desc))
         }) : h('div', { className: 'yh-olap-hint' }, '无结果'))
+    }
+
+    // ===== WORKSTATION: 通用对话框（自绘 confirm/input，替代 window.confirm/prompt）=====
+    // 状态在 st.dlg：{ kind:'confirm'|'input', title, message, value?, okLabel?, onOk }
+    // onOk：confirm 收到 true（点确定）；input 收到输入值（可为空串）。返回 false 不关闭。
+    function DlgModal(props) {
+      const { st, bump } = props
+      const d = st.dlg
+      if (!d) return null
+      const close = function () { st.dlg = null; bump() }
+      const inputRef = react.useRef(null)
+      // 打开时自动聚焦输入框；Esc 关闭
+      react.useEffect(function () {
+        if (d && d.kind === 'input' && inputRef.current) { inputRef.current.focus(); inputRef.current.select() }
+        if (!d) return
+        const onKey = function (e) { if (e.key === 'Escape') { e.stopPropagation(); close() } }
+        document.addEventListener('keydown', onKey, true)
+        return function () { document.removeEventListener('keydown', onKey, true) }
+      }, [d])
+      if (d.kind === 'input') {
+        const ok = function () {
+          const val = (inputRef.current && inputRef.current.value != null) ? inputRef.current.value : (d.value || '')
+          if (d.onOk && d.onOk(val) === false) return // onOk 可返回 false 拦截（如空值校验）
+          close()
+        }
+        return h('div', { className: 'yh-olap-mask', onMouseDown: function (e) { if (e.target === e.currentTarget) close() } },
+          h('div', { className: 'yh-olap-modal', style: { width: 360 }, onMouseDown: function (e) { e.stopPropagation() } },
+            d.title ? h('h4', null, d.title) : null,
+            d.message ? h('div', { className: 'yh-olap-dlgmsg', style: { fontSize: 12, color: 'var(--dsw-alias-label-secondary,#7a8ba0)', marginBottom: 8, whiteSpace: 'pre-wrap', wordBreak: 'break-all' } }, d.message) : null,
+            h('input', { ref: inputRef, defaultValue: d.value || '', placeholder: d.placeholder || '', style: { marginBottom: 10 } }),
+            h('div', { className: 'row' },
+              h('button', { className: 'pri', onClick: ok }, d.okLabel || '确定'),
+              h('button', { onClick: close }, '取消'))))
+      }
+      // confirm
+      const ok = function () { if (d.onOk && d.onOk(true) === false) return; close() }
+      return h('div', { className: 'yh-olap-mask', onMouseDown: function (e) { if (e.target === e.currentTarget) close() } },
+        h('div', { className: 'yh-olap-modal', style: { width: 360 }, onMouseDown: function (e) { e.stopPropagation() } },
+          d.title ? h('h4', null, d.title) : null,
+          d.message ? h('div', { className: 'yh-olap-dlgmsg', style: { fontSize: 12, color: 'var(--dsw-alias-label-primary,#cdd7e0)', marginBottom: 10, whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.5 } }, d.message) : null,
+          h('div', { className: 'row' },
+            h('button', { className: 'pri', onClick: ok }, d.okLabel || '确定'),
+            h('button', { onClick: close }, '取消'))))
     }
 
     function NoteModal(props) {
@@ -3445,11 +3517,14 @@ html[style*="color-scheme: dark"]{--yh-k:#c586c0;--yh-f:#4ec9b0;--yh-s:#e6a86e;-
         })
       }
       const remove = function (a) {
-        if (!window.confirm('删除账号 ' + a.username + ' ？')) return
-        callHost('olap.accounts.remove', { username: a.username }).then(function (r) {
-          if (r && r.ok) { st.accounts = st.accounts.filter(function (x) { return x.username !== a.username }); if (st.currentAccount === a.username) st.currentAccount = st.accounts.length ? st.accounts[0].username : ''; bump(); showToast(st, '已删除账号') }
-          else showToast(st, '删除失败')
-        })
+        st.dlg = { kind: 'confirm', title: '删除账号', message: '删除账号 ' + a.username + ' ？', okLabel: '删除', onOk: function () {
+          callHost('olap.accounts.remove', { username: a.username }).then(function (r) {
+            if (r && r.ok) { st.accounts = st.accounts.filter(function (x) { return x.username !== a.username }); if (st.currentAccount === a.username) st.currentAccount = st.accounts.length ? st.accounts[0].username : ''; bump(); showToast(st, '已删除账号') }
+            else showToast(st, '删除失败')
+          })
+          return true
+        } }
+        bump()
       }
       // 添加账号表单：非受控 defaultValue + 提交时从 DOM 读值 + 清空
       const add = function () {
@@ -3637,6 +3712,7 @@ html[style*="color-scheme: dark"]{--yh-k:#c586c0;--yh-f:#4ec9b0;--yh-s:#e6a86e;-
         h(NoteModal, { st: st, sid: sid, bump: bump }),
         h(AccountManageModal, { st: st, sid: sid, bump: bump }),
         h(DownloadDetailModal, { st: st, bump: bump }),
+        h(DlgModal, { st: st, bump: bump }),
         h(CollectMenu, { st: st, sid: sid, bump: bump }),
         st.toast ? h('div', { className: 'yh-olap-toast' }, st.toast) : null)
     }
