@@ -37,6 +37,7 @@
 
 ## 更新历史
 
+- 2026-09 代码评审 + P0/P1-P3 优化（git 基线化）：①**git 版本管理**：仓库纳入 git，评审前可运行版打 tag `v1.0.0-baseline`，随时 `git checkout v1.0.0-baseline` 拉回；②**启停安全**：start.sh 后台启动写 PID 文件（`$DSH_HOME/yh-olap.pid`）+ 日志，重复启动检测带 <10s 宽限期；stop.sh 首选 PID 文件精确停止，命令行兜底需 dsh+profile+port 三条件齐备——**修复原 `pgrep -f` 模糊子串匹配误杀无关进程的风险**（曾实证误匹配到无关进程）；③bash3.2 `set -u` 下变量后跟全角字符被吞成 `PORT�` 的 UTF-8 词法 bug：所有 `$VAR` 插值改 `${VAR}`；④**渲染体副作用外移**：`activePanelSid` 赋值移入 `useEffect([sid])`（消费方均用户交互时触发，不晚于原渲染期）；⑤**结果表分页**：ResultView 加「加载更多」——`olap.result` 服务端翻页（200/页）整行 JSON 去重追加，`hasMore=executeId存在&&已载<total`，无 executeId 的历史/收藏结果维持原状；⑥**自绘对话框**：新增 `DlgModal`（`st.dlg` 状态驱动 confirm/input，Esc/遮罩关闭、input 自动聚焦、onOk 可拦截空值），替换全部 7 处 `window.confirm/prompt`（收藏目录/重命名/删除、工作区重命名/删除、账号删除）；⑦**CSS token 收口**：`#4176e6/#e5484d/#fff/rgba-weak` 硬编码收敛为 `:root` 深浅两套 `--yh-ui-brand/-weak/--yh-ui-danger/-weak/--yh-ui-ondark`；⑧client.js 顶部加功能区段索引注释。**经验：react 渲染体禁止副作用；单文件巨石定位难 → 文件头留行号索引；改脚本前先查 bash3.2 对 `$VAR+全角字符` 的解析。**
 - 2026-08-28 初始搭建：独立 profile + 工作站插件（vendored yh-olap v1.0.1）+ yh-data preset + 启动脚本。
 - 2026-08-30 首启体验修复：preset `tool-todo` 补 `config.allowParallelInProgress`（缺失会导致 preset 挂载失败→建会话失败→卡 hero 页）；客户端无会话时自动 `workspaces.connectWorkspace` 建绑定工作区的会话；start.sh 播种默认工作区（含 workspace.json 不存在时）。**首次打开直接进入工作站（左 OLAP / 右会话），无需手动选工作区。**
 - 2026-08-30 布局修复：AppFrame 网格只设 `grid-column` 时 details 被 auto-placement 压进隐含第二行（列高 0、OLAP 不可见）；center/details 补 `grid-row:1` 修复。**验证网格重排必须查列高 + 编辑器是否在视口内 + 实际跑一次 SQL，不能只看 innerText/列宽。**
