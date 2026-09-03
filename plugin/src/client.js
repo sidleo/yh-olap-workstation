@@ -3530,7 +3530,12 @@ html[style*="color-scheme: dark"]{--yh-k:#c586c0;--yh-f:#4ec9b0;--yh-s:#e6a86e;-
         const iv = setInterval(sync, 800)
         return function () { clearInterval(iv) }
       }, [propSid])
-      activePanelSid = sid // @olap 引用候选/lexicon 绑定当前面板会话
+      // ===== WORKSTATION: activePanelSid 是模块级全局（@olap 引用候选/lexicon 读它），
+      // 副作用必须在 effect 里同步，不能在渲染体赋值（React 渲染应纯，含副作用的
+      // 渲染在并发/StrictMode 下会重复执行造成状态错乱）。同 effect 兼顾首次挂载。=====
+      react.useEffect(function () {
+        activePanelSid = sid
+      }, [sid])
       const st = useStore(sid)
       const bump = function () { st.version++; emitStore(sid); schedulePanelUpload(st, sid) }
 
