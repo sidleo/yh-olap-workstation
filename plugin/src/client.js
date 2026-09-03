@@ -6,6 +6,30 @@
 //  ② RPC：host.call(method,args) → callHost()，fetch POST /api/yh-olap/rpc（宿主半同路径分发）。
 //  ③ 定时器：timer.timeout/interval 用原生 setTimeout/setInterval 实现（返回取消函数）。
 //  ④ 样式：apply 内把 CSS 挂一个 <style> 标签，卸载时移除。
+//
+// ── 功能区段索引（本文件 3713 行，跳转定位用）────────────────────────────
+//  L10-221   插件入口 apply()：CSS 注入 + 布局尽早生效
+//  L222-341  引擎词表（IMPALA/HIVE 关键字与函数）+ tokenize/highlight
+//  L343-364  makeStore()：per-session 可变全局 store 初始状态
+//  L366-432  UI 杂项：toast / 填聊天框 / 复制 / 标签引用(referTab)
+//  L433-628  编辑器键盘辅助 + 轻量多光标 + 软换行光标坐标（wrap 像素估算）
+//  L637-660  store 注册表（stores/listeners/useStore）
+//  L661-913  本地工作区持久化（per-session 多文件）+ 布局跟随 + 新会话重置
+//  L915-1019 下载 blob / 数据源/库/表/列懒加载
+//  L1020-1323 收藏树 + 工作区树组件（WorkspaceTree）
+//  L1324-1448 知识库树组件（SqlkbTree/KB）+ NoteModal
+//  L1449-1592 WsDivider（对话区宽度分隔条）+ LeftArea（左栏四 tab）
+//  L1594-1778 光标 mirror 定位 / schema·表·别名查找 / 补全排名
+//  L1779-2272 Editor（大组件：补全/键盘/滚动/双击括号/行号）
+//  L2273-2477 doRun/pollRun/killRun/downloadSimple（执行与结果轮询）
+//  L2478-2582 SQL 格式化辅助（mask/lowerKeywords/splitCodeTop）
+//  L2583-2898 formatSql/formatMain（手写 SQL 格式化器）
+//  L2899-3014 FunctionBar（工具栏）+ 历史/下载加载 + 短格式工具
+//  L3015-3165 ResultView（结果表）+ History/Download 视图
+//  L3166-3493 底栏 / 账号选择 / 标签栏右键 / 各弹窗(参数/收藏/账号/便签)
+//  L3494-3597 OlapPanel（主面板）+ applyCommands
+//  L3598-3713 slots 注入 / @olap 引用源 / dispose
+// ───────────────────────────────────────────────────────────────────────
 
 window.__ModuleLoader__.load({
   id: 'dsh-yh-olap-workstation',
