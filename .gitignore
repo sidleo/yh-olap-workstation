@@ -1,0 +1,14 @@
+# 运行时数据（独立 DSH_HOME）：会话、设置、预设安装、profile 依赖
+.dsh-home/
+
+# node_modules
+**/node_modules/
+
+# 系统
+.DS_Store
+
+# 本地工作区（~/.yh-olap/workspace 的影子，一般不在仓库内）
+# （workspace 默认写在用户主目录 ~/.yh-olap/workspace，不入库）
+
+# 备份
+backups/

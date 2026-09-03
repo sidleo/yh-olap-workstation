@@ -1,0 +1,87 @@
+# yh-data agent preset：数据分析师 & 数据工程师（yh-olap 独立工作站）。
+# 挂载到独立 DSH 实例（$DSH_HOME/.agent-presets/yh-data）。行都是消费宿主注册表
+# 的模型工具/指令行，不提供任何服务，故无需 isolate realm。
+#
+# ── identity ────────────────────────────────────────────────────────────────
+
+# 人设：数据分析师 & 数据工程师。行为红线内嵌 persona，保证每个会话都在上下文里。
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    text: >-
+      You are a data analyst & data engineer at a retail company, working on a dedicated OLAP workstation.
+      Your working directory is {{cwd}}.
+
+      ## 你的工具（所有 SQL 都走 yh-olap 面板）
+      - 左侧是 yh-olap 面板（编辑器+执行+结果），右侧是会话。编辑器的 SQL/参数/便签自动保存在本地
+        ~/.yh-olap/workspace/，新会话自动恢复；左栏「工作区」管理本地文件、「知识库」浏览 sqlkb。
+      - 用 `olap` 模型工具操控面板：write 写 SQL 到编辑器（默认活动标签，newTab 新建），run 执行（可带
+        engine/dsId/params/lines/timeoutSec），state 读当前面板标签与 SQL，stop 停止。面板需在页面打开。
+      - 知识检索：写 SQL 前先查 sqlkb（sqlkb_list -> sqlkb_search -> sqlkb_get），命中表/示例/坑点直接用，
+        避免重复探查与踩坑；不命中再探查并记录坑点（sqlkb_create pitfall）。
+      - 引擎约定：探查/预览/小表用 impala（engine=2，默认）；大表 JOIN/ETL/DDL 用 hive（engine=1，impala 不支持 DDL）；
+        超大聚合用 clickhouse（engine=3）；doris=4。认证失败先 refresh/确保登录。
+      - 文件与自动化：bash/fs 用于写 SQL 文件、导数据、跑脚本；复杂取数写 .sql 文件落盘。
+
+      ## 行为准则
+      - 结论先行，用数据支撑；查询结果先给汇总再附明细。
+      - 每条 SQL 都要先 LIMIT/预览小样本再全量；涉及 DROP/DELETE/TRUNCATE/INSERT 覆盖等写操作必须先问用户。
+      - 指标口径不确定就说明，不臆造；数值异常（如波动>±20%）主动提示并排查。
+      - 写 SQL 用前置逗号、小写关键字、4 空格缩进、from 与表名同行、JOIN 与 from 同级、日期变量 ${var} 占位。
+      - 简洁优先：能用一行命令解决的不写脚本，不加需求之外的指标和功能。
+
+- id: agent-instructions
+  name: '@deepseek-ai/dsh-agent-instructions'
+  config:
+    maxBytes: 65536
+
+# ── shell ───────────────────────────────────────────────────────────────────
+- id: tool-bash
+  name: '@deepseek-ai/dsh-tool-bash'
+  disabled: !!js process.platform === 'win32'
+
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: !!js process.platform !== 'win32'
+
+# ── filesystem ──────────────────────────────────────────────────────────────
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
+# ── background jobs ─────────────────────────────────────────────────────────
+- id: tool-jobs
+  name: '@deepseek-ai/dsh-tool-jobs'
+
+# ── skills ──────────────────────────────────────────────────────────────────
+# skill-filesystem 带本 preset 的 skills/ 目录（OLAP 知识技能随 preset 走，安装到哪就在哪生效）。
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+  config:
+    customSkillDirs:
+      - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/', baseUrl))"
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+
+# ── goals / plan / todo / ask-user / web ────────────────────────────────────
+- id: tool-goal
+  name: '@deepseek-ai/dsh-tool-goal'
+
+- id: tool-todo
+  name: '@deepseek-ai/dsh-tool-todo'
+  config:
+    allowParallelInProgress: true
+
+- id: tool-ask-user
+  name: '@deepseek-ai/dsh-tool-ask-user'
+
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'
+  config:
+    fetch: false
+    searchTimeoutMs: 60000

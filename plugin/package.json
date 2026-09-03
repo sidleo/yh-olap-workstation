@@ -1,0 +1,41 @@
+{
+  "name": "dsh-yh-olap-workstation",
+  "version": "0.1.0",
+  "description": "yh-olap workstation plugin: vendored yh-olap panel + workstation layout + multi-file local persistence + sqlkb browser + history session picker.",
+  "type": "module",
+  "main": "./src/host.js",
+  "exports": {
+    ".": "./src/host.js",
+    "./client": "./src/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis",
+    "plugin",
+    "olap",
+    "sql",
+    "workstation",
+    "yonghui",
+    "sqlkb"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "platform": "web"
+    }
+  }
+}

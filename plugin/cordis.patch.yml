@@ -1,0 +1,5 @@
+# dsh-yh-olap-workstation bundle patch：把插件行插入 DSH profile。
+# 安装：dsh plugin --profile <name> add link:<本项目>/plugin
+- insert:
+    - id: yh-olap-workstation
+      name: dsh-yh-olap-workstation
