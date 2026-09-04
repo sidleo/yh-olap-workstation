@@ -3802,8 +3802,17 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
           if (tab) {
             let s = c.sql
             if (c.lines && Array.isArray(c.lines) && c.lines.length === 2) {
-              const lines = (tab.sql || '').split('\n')
-              s = lines.slice(c.lines[0] - 1, c.lines[1]).join('\n')
+              // ===== WORKSTATION: lines 区间语义 = 用 c.sql 替换 [start,end] 行，而非裁剪。
+              // 原实现 s = 编辑器.slice(start-1,end) 丢弃 c.sql、且把整个 tab.sql 替换成
+              // 裁剪结果 → 引用 L13 改一行，结果整个编辑器变成那一行（会话 4a7e5825 实测）。
+              // 正确：把 tab.sql 的 [start,end] 行替换成 c.sql（模型给的新内容，可多行）。=====
+              const arr = (tab.sql || '').split('\n')
+              const a = Math.max(1, Math.floor(c.lines[0]))
+              const b = Math.min(arr.length, Math.floor(c.lines[1]))
+              const head = arr.slice(0, a - 1)
+              const tail = arr.slice(b) // b 为闭区间末行(1-based) → slice(b) 取 b 之后的行
+              const rep = String(c.sql === undefined || c.sql === null ? '' : c.sql).split('\n')
+              s = head.concat(rep, tail).join('\n')
             }
             if (s !== undefined && s !== null) {
               markProgSqlSet(); tab.sql = s
