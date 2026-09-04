@@ -372,7 +372,7 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
     function makeStore() {
       return {
         version: 0,
-        tabs: [{ id: 1, name: 'Tab1', sql: '', engine: '2', dsId: 2, params: {}, autoSave: false, bottomTab: 'result', running: false, executeId: '', finish: '', log: '', errMsg: '', result: null }],
+        tabs: [{ id: 1, name: 'Tab1', sql: '', engine: '2', dsId: 2, params: {}, autoSave: true, bottomTab: 'result', running: false, executeId: '', finish: '', log: '', errMsg: '', result: null, wsFile: '1' }],
         activeTab: 1,
         datasources: [], schemas: {}, tables: {}, columns: {}, expanded: {},
         collectTree: [], collectDirs: [], collectExpanded: {}, collectMenu: null,
@@ -970,7 +970,7 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
       const st = getStore(sid)
       if (!st) return
       // 重置为纯新状态：单个空 Tab1
-      st.tabs = [{ id: 1, name: 'Tab1', sql: '', engine: '2', dsId: 2, params: {}, note: '', autoSave: false, bottomTab: 'result', running: false, executeId: '', finish: '', log: '', errMsg: '', result: null }]
+      st.tabs = [{ id: 1, name: 'Tab1', sql: '', engine: '2', dsId: 2, params: {}, note: '', autoSave: true, bottomTab: 'result', running: false, executeId: '', finish: '', log: '', errMsg: '', result: null, wsFile: '1' }]
       st.activeTab = 1
       st.__wsRestored = true // 阻止该会话恢复旧文件
       wsMetaFor(sid).tabs = null
@@ -985,6 +985,9 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
         })
       }
       emitStore(sid)
+      // 新会话的干净 Tab1 立即落盘（全自动保存：保证刷新后稳定为 1 个空 Tab1）
+      callHost('ws.workspace.save', { sessionId: sid, kind: 'sql', name: '1', content: '' })
+      callHost('ws.workspace.save', { sessionId: sid, kind: 'params', name: '1', content: JSON.stringify({ __name: 'Tab1' }) })
     }
     setTimeout(wsPatchSidebarNewSession, 1500)
 
@@ -1224,15 +1227,20 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
         if (open) delete st.expanded['c' + node.id]; else st.expanded['c' + node.id] = true
         bump()
       } : function () {
-        // ===== WORKSTATION: 点击收藏 → 新建标签打开（标签名 = 收藏名），标记 collectId 供「保存」更新用 =====
+        // ===== WORKSTATION: 点击收藏 → 新建标签打开（标签名 = 收藏名），标记 collectId 供「保存」更新用。
+        // 全自动保存模型：收藏标签也本地落盘一份（wsFile 关联），关标签删本地副本不影响服务端收藏。=====
         const nid = wsNextTabId(st)
-        const ntab = { id: nid, name: node.name || ('收藏' + nid), sql: node.querySql || '', engine: '2', dsId: 2, params: {}, note: '', autoSave: false, bottomTab: 'result', running: false, executeId: '', finish: '', log: '', errMsg: '', result: null, collectId: node.id }
+        const ntab = { id: nid, name: node.name || ('收藏' + nid), sql: node.querySql || '', engine: '2', dsId: 2, params: {}, note: '', autoSave: true, bottomTab: 'result', running: false, executeId: '', finish: '', log: '', errMsg: '', result: null, collectId: node.id, wsFile: String(nid) }
         try {
           const p = JSON.parse(node.params || '[]')
           if (Array.isArray(p)) { const po = {}; p.forEach(function (it) { po[it.key] = it.value }); ntab.params = po }
         } catch (e) { /* ignore */ }
         st.tabs.push(ntab)
         st.activeTab = nid
+        wsNoteFile(st, String(nid))
+        // 立即落盘（含 __name = 收藏名，刷新恢复时显示收藏名）
+        callHost('ws.workspace.save', { sessionId: sid, kind: 'sql', name: String(nid), content: ntab.sql })
+        callHost('ws.workspace.save', { sessionId: sid, kind: 'params', name: String(nid), content: JSON.stringify(Object.assign({}, ntab.params, { __name: ntab.name })) })
         bump()
       }
       return h('div', { onContextMenu: function (e) { e.preventDefault(); e.stopPropagation(); st.collectMenu = { node: node, x: e.clientX, y: e.clientY }; bump() } },
@@ -1726,12 +1734,10 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
         h('div', { className: 'yh-olap-tabs2' },
           h('span', { className: st.leftTab === 'schema' ? 'on' : '', onClick: function () { st.leftTab = 'schema'; bump() } }, '库表'),
           h('span', { className: st.leftTab === 'collect' ? 'on' : '', onClick: function () { st.leftTab = 'collect'; loadCollect(st, sid, bump) } }, '收藏'),
-          h('span', { className: st.leftTab === 'workspace' ? 'on' : '', onClick: function () { st.leftTab = 'workspace'; wsRefreshTree(st, sid, bump) } }, '工作区'),
           h('span', { className: st.leftTab === 'sqlkb' ? 'on' : '', onClick: function () { st.leftTab = 'sqlkb'; bump() } }, '知识库')),
         st.leftTab === 'schema' ? h(SchemaTree, { st: st, sid: sid, bump: bump })
           : st.leftTab === 'collect' ? h(CollectTree, { st: st, sid: sid, bump: bump })
-            : st.leftTab === 'workspace' ? h(WorkspaceTree, { st: st, sid: sid, bump: bump })
-              : h(SqlkbTree, { st: st, sid: sid, bump: bump }),
+            : h(SqlkbTree, { st: st, sid: sid, bump: bump }),
         h('button', { className: 'yh-olap-coltoggle collapse', onClick: function () { st.leftCollapsed = true; bump() }, title: '收起左栏' }, '◀'),
         h('div', { className: 'yh-olap-resizer', onMouseDown: startDrag, title: '拖动调整宽度' }))
     }
@@ -3433,24 +3439,7 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
       return h('div', { className: 'yh-olap-tmenu', style: { left: px, top: py }, onMouseDown: function (e) { e.stopPropagation() }, onContextMenu: function (e) { e.preventDefault(); e.stopPropagation() } },
         h('div', { className: 'yh-olap-titem', title: '把标签引用（如 [OLAP 标签 #3 SQL3]）添加到聊天输入框，模型据此用 tabId 指定该标签', onClick: function () { act(function () { if (tab) referTab(tab, st) }) } }, '引用（添加到聊天输入框）'),
         h('div', { className: 'yh-olap-titem', onClick: function () { act(function () { if (tab) onRename(tab) }) } }, '重命名'),
-        h('div', { className: 'yh-olap-titem' + (tab && tab.autoSave ? ' on' : ''), title: '勾选后，本标签内容（SQL/参数/便签）自动保存到工作区；取消勾选则删除工作区对应文件（不再保留）', onClick: function () {
-          act(function () {
-            if (!tab) return
-            tab.autoSave = !tab.autoSave
-            if (tab.autoSave) {
-              tab.wsFile = String(tab.id) // ===== WORKSTATION: 入工作区 → 建立 wsFile 关联，点工作区文件切回本标签 =====
-              wsPersistAll(st.__id) // 开启时立即保存一次
-            } else {
-              tab.wsFile = undefined // ===== WORKSTATION: 出工作区 → 清除 wsFile 关联 =====
-              // ===== WORKSTATION: 取消自动保存 → 删除该标签的工作区文件（id 命名）=====
-              const base = wsBaseOf(tab)
-              ;['sql', 'params', 'note'].forEach(function (k) {
-                callHost('ws.workspace.remove', { sessionId: st.__id, kind: k, name: base })
-              })
-            }
-          })
-        } }, (tab && tab.autoSave ? '✓ ' : '') + '自动保存'),
-        h('div', { className: 'yh-olap-titem', onClick: function () { act(function () { if (tab) onRemove(tab) }) } }, '删除标签'))
+        h('div', { className: 'yh-olap-titem', title: '删除标签并移除本地保存（不可恢复）', onClick: function () { act(function () { if (tab) onRemove(tab) }) } }, '删除标签'))
     }
 
     function TabsBar(props) {
@@ -3458,22 +3447,42 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
       const addTab = function () {
         const base = activeTab(st)
         const nid = wsNextTabId(st)
-        st.tabs.push({ id: nid, name: 'Tab' + nid, sql: '', engine: base.engine, dsId: base.dsId, params: {}, autoSave: false, bottomTab: 'result', running: false, executeId: '', finish: '', log: '', errMsg: '', result: null })
+        st.tabs.push({ id: nid, name: 'Tab' + nid, sql: '', engine: base.engine, dsId: base.dsId, params: {}, autoSave: true, bottomTab: 'result', running: false, executeId: '', finish: '', log: '', errMsg: '', result: null, wsFile: String(nid) })
         st.activeTab = nid
+        wsNoteFile(st, String(nid))
+        // 全自动保存：新标签立即落盘（空内容也建文件，刷新后恢复该标签）
+        callHost('ws.workspace.save', { sessionId: sid, kind: 'sql', name: String(nid), content: '' })
+        callHost('ws.workspace.save', { sessionId: sid, kind: 'params', name: String(nid), content: JSON.stringify({ __name: 'Tab' + nid }) })
         bump()
       }
       const removeTab = function (t) {
+        // ===== WORKSTATION: 全自动保存模型 —— 关标签即删除本地文件（不确认）。
+        // 收藏标签（collectId）只删本地副本，不影响服务端收藏本体。=====
+        const removeFiles = function () {
+          if (t.wsFile || /^\d+$/.test(String(t.id))) {
+            const base = String(t.wsFile !== undefined && t.wsFile !== null ? t.wsFile : t.id)
+            ;['sql', 'params', 'note'].forEach(function (k) {
+              callHost('ws.workspace.remove', { sessionId: st.__id || sid, kind: k, name: base })
+            })
+            if (st.__wsKnownFiles) st.__wsKnownFiles.delete(base)
+          }
+        }
         if (st.tabs.length <= 1) {
-          // ===== WORKSTATION: 关闭最后一个标签 → 真正移除它并新建一个纯净空白标签（无 wsFile/autoSave 等历史关联）=====
+          // 关闭最后一个标签 → 删其文件，新建纯净空白 Tab1（全自动保存）
+          removeFiles()
           const keepEngine = t.engine, keepDs = t.dsId
           st.tabs = []
-          const nid = wsNextTabId(st)
+          const nid = 1 // 最后标签关闭后总是从 Tab1 重新开始
           wsNoteFile(st, String(nid))
-          st.tabs.push({ id: nid, name: 'Tab' + nid, sql: '', engine: keepEngine || '2', dsId: keepDs || 2, params: {}, note: '', autoSave: false, bottomTab: 'result', running: false, executeId: '', finish: '', log: '', errMsg: '', result: null })
+          st.tabs.push({ id: nid, name: 'Tab1', sql: '', engine: keepEngine || '2', dsId: keepDs || 2, params: {}, note: '', autoSave: true, bottomTab: 'result', running: false, executeId: '', finish: '', log: '', errMsg: '', result: null, wsFile: String(nid) })
           st.activeTab = nid
           bump()
+          // 空 Tab1 也立即落盘（保证刷新后有干净起点）
+          callHost('ws.workspace.save', { sessionId: st.__id || sid, kind: 'sql', name: '1', content: '' })
+          callHost('ws.workspace.save', { sessionId: st.__id || sid, kind: 'params', name: '1', content: JSON.stringify({ __name: 'Tab1' }) })
           return
         }
+        removeFiles()
         const i = st.tabs.indexOf(t)
         st.tabs.splice(i, 1)
         if (st.activeTab === t.id) st.activeTab = st.tabs[Math.max(0, i - 1)].id
@@ -3502,8 +3511,8 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
               onClick: function () { st.activeTab = t.id; bump() },
               onDoubleClick: function () { startRename(t) },
               onContextMenu: function (e) { e.preventDefault(); e.stopPropagation(); st.tabMenu = { tabId: t.id, x: e.clientX, y: e.clientY }; bump() },
-              title: (t.autoSave ? '已自动保存（右键可关闭）' : '未自动保存（右键勾选「自动保存」）') + '；双击重命名，右键更多操作',
-            }, t.name + (t.autoSave ? ' ◉' : '') + (t.running ? ' ●' : ''),
+              title: '内容自动保存，刷新/重开会话自动恢复；双击重命名，右键更多操作（删除标签会移除本地保存）',
+            }, t.name + (t.running ? ' ●' : ''),
               h('span', { className: 'tabx', onClick: function (e) { e.stopPropagation(); removeTab(t) }, title: '删除标签' }, '×'))
           }),
           h('button', { className: 'yh-olap-tab-add', onClick: addTab, title: '新建标签' }, '+')),
@@ -3792,7 +3801,8 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
           if (c.newTab) {
             const base = activeTab(st)
             const nid = wsNextTabId(st)
-            tab = { id: nid, name: 'Tab' + nid, sql: '', engine: base.engine, dsId: base.dsId, params: {}, autoSave: false, bottomTab: 'result', running: false, executeId: '', finish: '', log: '', errMsg: '', result: null }
+            tab = { id: nid, name: 'Tab' + nid, sql: '', engine: base.engine, dsId: base.dsId, params: {}, autoSave: true, bottomTab: 'result', running: false, executeId: '', finish: '', log: '', errMsg: '', result: null, wsFile: String(nid) }
+            wsNoteFile(st, String(nid))
             st.tabs.push(tab)
             st.activeTab = nid
           } else {
