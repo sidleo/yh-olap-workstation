@@ -123,7 +123,7 @@ window.__ModuleLoader__.load({
 .yh-olap-func .stop:hover{background:var(--yh-ui-danger-weak)}
 .yh-olap-split{flex:1;display:flex;flex-direction:column;min-height:0}
 .yh-olap-editor{position:relative;overflow:hidden;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;line-height:1.55}
-.yh-olap-gutter{position:absolute;top:0;left:0;bottom:0;width:34px;margin:0;background:var(--dsw-alias-bg-layer-2,#10161d);color:var(--dsw-alias-label-secondary,#4a5a6e);text-align:right;padding:10px 6px 10px 0;box-sizing:border-box;user-select:none;overflow:hidden;white-space:pre;font:inherit}
+.yh-olap-gutter{position:absolute;top:0;left:0;width:34px;margin:0;background:var(--dsw-alias-bg-layer-2,#10161d);color:var(--dsw-alias-label-secondary,#4a5a6e);text-align:right;padding:10px 6px 10px 0;box-sizing:border-box;user-select:none;overflow:hidden;white-space:pre;font:inherit}
 .yh-olap-code{position:absolute;top:0;left:34px;right:0;bottom:0}
 :root{--yh-k:#9d4dd3;--yh-f:#00897b;--yh-s:#c2571a;--yh-p:#c0392b;--yh-n:#2e7d32;--yh-i:#1f2937;--yh-c:#6b7280;--yh-x:#4b5563}
 html[style*="color-scheme: dark"]{--yh-k:#c586c0;--yh-f:#4ec9b0;--yh-s:#e6a86e;--yh-p:#d16969;--yh-n:#b5cea8;--yh-i:#d7dee6;--yh-c:#5f7f5f;--yh-x:#aab4c0}
@@ -1978,19 +1978,27 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
         gutterText = sql.split('\n').map(function (_, i) { return String(i + 1) }).join('\n')
       }
 
-      // ===== WORKSTATION: 滚动同步 —— hl 用 transform 偏移（不用 scrollTop，避免 React 重渲染重置导致错位）=====
+      // ===== WORKSTATION: 滚动同步 —— hl 用 transform 偏移（不用 scrollTop，避免 React 重渲染重置导致错位）。
+      // 根治「滚动后错位」：gutter/hl 的内容高必须以 textarea 真实 scrollHeight 为准，
+      // 不能用 visualRowsOf 手算行数（字体/折行 subpixel 偏差会随行数累积 → 滚动到深处
+      // 差一行：光标在 50 行但高亮/行号在 49 行）。每次同步把 gutter 与 hl-inner 的高度
+      // 撑到 ta.scrollHeight，滚动位移即像素精确对齐。=====
       const syncHl = function () {
-        const ta = taRef.current, hi = hlInnerRef.current, gu = gutterRef.current
+        const ta = taRef.current, hi = hlRef.current, hii = hlInnerRef.current, gu = gutterRef.current
         if (!ta) return
         const st2 = ta.scrollTop, sl2 = ta.scrollLeft
+        const sh = ta.scrollHeight || 0
         if (hi) {
-          // ===== WORKSTATION: hl 总宽 = textarea clientWidth（含 padding）→ 两者文字区同宽，换行点一致。
-          // 注：textarea 的垂直滚动条占去内容宽（clientWidth 含滚动条区），故直接对齐 clientWidth 即可 =====
+          // hl 总宽 = textarea clientWidth（含 padding）→ 两者文字区同宽，换行点一致。
           const tw = ta.clientWidth || 0
-          if (tw) hi.style.width = tw + 'px' // 无条件设置（确保生效）
+          if (tw) hi.style.width = tw + 'px'
           hi.style.transform = 'translate(' + (-sl2) + 'px,' + (-st2) + 'px)'
         }
-        if (gu) gu.scrollTop = st2
+        if (hii && hii.style.height !== sh + 'px') hii.style.height = sh + 'px' // 撑到真实内容高
+        if (gu) {
+          if (gu.style.height !== sh + 'px') gu.style.height = sh + 'px' // gutter 同高 → scrollTop 同步精确
+          gu.scrollTop = st2
+        }
       }
       const onScroll = function () { syncHl() }
 
@@ -2411,9 +2419,32 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
       }
 
       // ===== WORKSTATION: 当前光标所在物理行浅灰背景 top（软换行折行后高亮光标所在的那段）=====
+      // ===== WORKSTATION: curTop 用 caretPos（mirror 真实测量）替代 cursorXY 手算折行。
+      // 手算折行在长内容滚动后偏差累积 → 光标在 50 行但背景条在 49 行；
+      // caretPos 建同宽 mirror 让浏览器真实折行测 marker 位置，像素精确。
+      // 坐标系：curline 位于 hl-inner(padding-top:10px) 内，hl-inner 由 transform 随滚动
+      // 整体位移 → curline top 用「内容坐标」= mirror 中 marker 顶相对 mirror 文字区顶，
+      // 即 marker.offsetTop - 10(padding)；不能直接用 caretPos 的 y（那是视口坐标已减 scrollTop）。=====
       const curTop = sql ? (function () {
-        const pos = Math.max(0, Math.min(caret, sql.length))
-        return cursorXY(sql, pos, usableWidthOf(taRef.current)).y - 3
+        const ta0 = taRef.current
+        if (!ta0) return 0
+        try {
+          // 复用 caretPos 的 mirror 测量：在 caretPos 内部 y 是视口系，这里需要内容系，
+          // 直接用同样 mirror 逻辑取 marker.offsetTop（不含滚动、不含视口偏移）。
+          const before = ta0.value.slice(0, ta0.selectionStart)
+          const mirror = document.createElement('div')
+          mirror.style.cssText = 'position:absolute;visibility:hidden;white-space:pre-wrap;word-break:break-all;overflow:hidden;font:inherit;top:0;left:0;padding:10px 12px;box-sizing:border-box;line-height:1.55'
+          mirror.style.width = (ta0.clientWidth || 400) + 'px'
+          mirror.textContent = before
+          const marker = document.createElement('span')
+          marker.textContent = '\u200b'
+          mirror.appendChild(marker)
+          ta0.parentNode.appendChild(mirror)
+          const my = marker.offsetTop
+          const mh = marker.offsetHeight || 20
+          ta0.parentNode.removeChild(mirror)
+          return Math.max(0, my + mh / 2 - 10) // 行中位置在内容坐标的 y
+        } catch (e) { return 0 }
       })() : 0
 
       const mcurMarkers = (st.mcursors || []).map(function (p) {
