@@ -3690,10 +3690,26 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
 
     // ---- OLAP 模式标签（输入框区域，读 host 'olap' 投影，点击退出）----
     function OlapChip(props) {
+      // ===== WORKSTATION: 模式状态改从 host 内存轮询（olap.mode.get），不再依赖
+      // sessionProjections —— 投影只能由 session 事件驱动，而 olap/mode 事件已停写
+      // （避免污染日志致历史会话加载报错）。保留投影值作首帧，轮询校正。=====
       const up = props.useProjection
       const proj = up ? up('olap') : undefined
-      const active = !!(proj && proj.active)
+      const [active, setActive] = react.useState(!!(proj && proj.active))
       const [busy, setBusy] = react.useState(false)
+      const sidFor = props.sessionId || currentSessionId() || ''
+      react.useEffect(function () {
+        if (!sidFor) return
+        let alive = true
+        const poll = function () {
+          callHost('olap.mode.get', { sessionId: sidFor }).then(function (r) {
+            if (alive && r && r.ok) setActive(!!r.active)
+          }).catch(function () { /* ignore */ })
+        }
+        poll()
+        const iv = setInterval(poll, 1500)
+        return function () { alive = false; clearInterval(iv) }
+      }, [sidFor])
       if (!active) return null
       const off = function () {
         if (busy || !ctx.remote || !ctx.remote.commands || !props.sessionId) return

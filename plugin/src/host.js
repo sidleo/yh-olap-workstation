@@ -399,6 +399,11 @@ const queues = {
     panelQueues.set(sid, [])
     return { ok: true, commands: list }
   },
+  // ===== WORKSTATION: OLAP 模式状态只读（客户端 chip 轮询用；状态存内存不落日志）=====
+  'olap.mode.get': async (args) => {
+    const sid = String(args && args.sessionId || '')
+    return { ok: true, active: sid ? getOlapModeBySid(sid) : false }
+  },
 }
 // ===== WORKSTATION: workspace 多文件持久化 + sqlkb 只读浏览 + 历史会话列表 =====
 function wsSafeFile(name) {
@@ -880,12 +885,21 @@ const OLAP_MODE_GUIDE = [
 
 const PASS_SCHEMA = { parse: (v) => v }
 
-function foldOlapMode(events) {
-  let active = false
-  for (const ev of events) {
-    if (ev && ev.type === 'olap/mode') active = !!ev.data.active
-  }
-  return active
+// ===== WORKSTATION: OLAP 模式状态存内存（不 append session 事件）。
+// 原实现 session.append('olap/mode') 会把自定义事件持久化进会话日志，但框架的
+// session-persistence 读取校验只认 KNOWN_SESSION_EVENT_TYPES，不认 'olap/mode'，
+// 导致所有含该事件的历史会话加载报 SessionFormatUnsupportedError（用户实测
+// "历史会话载入经常报错"）。append API 也无法标记 ignorable → 改为内存 Map
+// 存 sid→mode，不污染日志。重启后模式默认关闭（用户重新 /olap 开启即可）。
+const olapModeBySid = new Map() // sessionId 字符串 → boolean
+function getOlapModeBySid(sid) { return olapModeBySid.get(sid) === true }
+function setOlapModeMem(sid, active) {
+  if (active) olapModeBySid.set(sid, true)
+  else olapModeBySid.delete(sid)
+}
+function getOlapMode(session) { return !!session && getOlapModeBySid(session.id) }
+function foldOlapMode(session) {
+  return !!session && getOlapModeBySid(session.id)
 }
 function hasOpenTurn(events) {
   let open = false
@@ -907,17 +921,17 @@ function inlineUserMessage(text) {
 function setOlapMode(agent, active, pendingIntents) {
   const session = agent.session
   const pending = pendingIntents.get(session)
-  const target = pending ? pending.active : foldOlapMode(session.events)
+  const target = pending ? pending.active : getOlapModeBySid(session.id)
   if (active === target) return 'noop'
   if (hasOpenTurn(session.events)) {
     pendingIntents.set(session, { active })
-    return foldOlapMode(session.events) === active ? 'cancelled' : 'queued'
+    return getOlapModeBySid(session.id) === active ? 'cancelled' : 'queued'
   }
-  if (active === foldOlapMode(session.events)) {
+  if (active === getOlapModeBySid(session.id)) {
     pendingIntents.delete(session)
     return 'cancelled'
   }
-  session.append('olap/mode', { active })
+  setOlapModeMem(session.id, active)
   pendingIntents.delete(session)
   return 'committed'
 }
@@ -929,12 +943,12 @@ function registerOlapMode(ctx, disposers) {
       const pending = pendingIntents.get(agent.session)
       if (decision.kind === 'reject' || signal.aborted || pending === undefined) return decision
       try {
-        if (pending.active !== foldOlapMode(agent.session.events)) {
-          agent.session.append('olap/mode', { active: pending.active })
+        if (pending.active !== foldOlapMode(agent.session)) {
+          setOlapModeMem(agent.session.id, pending.active)
         }
         pendingIntents.delete(agent.session)
       } catch (error) {
-        ctx.logger && ctx.logger.warn('yh-olap: append olap/mode failed: %o', error)
+        ctx.logger && ctx.logger.warn('yh-olap: set olap mode failed: %o', error)
       }
       return decision
     })
@@ -945,7 +959,7 @@ function registerOlapMode(ctx, disposers) {
         order: 50,
         text: (context) => {
           if (context.agent === undefined) return ''
-          return foldOlapMode(context.agent.session.events) ? OLAP_MODE_GUIDE : ''
+          return foldOlapMode(context.agent.session) ? OLAP_MODE_GUIDE : ''
         },
       })
       if (off) disposers.push(off)
