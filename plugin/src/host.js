@@ -777,9 +777,21 @@ const tool = {
         summary = 'panel not open in that session; open the OLAP panel via the session header button first'
       } else if (args.tabId) {
         const t = st.tabs.find(function (x) { return x.id === args.tabId })
-        summary = t
-          ? ('tab#' + t.id + ' ' + (t.name || '') + (t.id === st.activeTab ? '(active)' : '') + ' engine=' + t.engine + (t.running ? ' RUNNING' : '') + ' finish=' + (t.finish || '') + '\nsql=' + JSON.stringify(t.sql || ''))
-          : ('no tab#' + args.tabId + '; existing tabs: ' + st.tabs.map(function (x) { return x.id }).join(','))
+        if (!t) {
+          summary = 'no tab#' + args.tabId + '; existing tabs: ' + st.tabs.map(function (x) { return x.id }).join(',')
+        } else {
+          let sqlShow = t.sql || ''
+          let lineNote = ''
+          // ===== WORKSTATION: state 支持 lines 区间读取（配合「引用选中 SQL」行区间块）。
+          // 用户右键引用 @olapN:L3-10 后，模型 state {tabId, lines:[3,10]} 精确读该段。=====
+          if (args.lines && Array.isArray(args.lines) && args.lines.length === 2) {
+            const arr = (t.sql || '').split('\n')
+            const ls = Math.max(1, args.lines[0]), le = Math.min(arr.length, args.lines[1])
+            sqlShow = arr.slice(ls - 1, le).join('\n')
+            lineNote = ' lines=' + ls + '-' + le
+          }
+          summary = 'tab#' + t.id + ' ' + (t.name || '') + (t.id === st.activeTab ? '(active)' : '') + ' engine=' + t.engine + (t.running ? ' RUNNING' : '') + ' finish=' + (t.finish || '') + lineNote + '\nsql=' + JSON.stringify(sqlShow)
+        }
       } else {
         summary = 'tabs=' + st.tabs.length + ' active=' + st.activeTab + ' account=' + (st.currentAccount || '') + '\n' + st.tabs.map(function (t) {
           return '  #' + t.id + ' ' + (t.name || '') + (t.id === st.activeTab ? '(active)' : '') + ' engine=' + t.engine + (t.running ? ' RUNNING' : '') + (t.finish ? ' finish=' + t.finish : '') + '\n    sql=' + JSON.stringify((t.sql || '').slice(0, 300))
@@ -860,7 +872,7 @@ const OLAP_MODE_GUIDE = [
   '1. 目标会话的 OLAP 面板需已打开（会话头部 OLAP 按钮）。先调用 olap state 看面板状态（所有标签的 SQL/引擎/数据源/运行状态）。',
   '2. 修改/填入 SQL：先 olap state 读取编辑器当前 SQL（含用户手动编辑的最新内容），基于它修改，再 olap.write {tabId, sql} 写回。**write 只返回"已入队"，不代表已上屏——write 后必须再次 olap state 验证目标标签的 sql 已变成你写入的内容**；若 state 仍显示旧值/为空，说明面板未同步（未打开/刚刷新/会话错位），应告知用户刷新面板或确认面板打开后重试，绝不能谎报"已填入"。只按要求修改，不主动运行。',
   '3. 新建需求：先 olap state 判断活动标签是否已有代码；有代码则 olap.write {newTab:true, sql} 新建标签，不覆盖现有。新建后同样要 state 验证新标签已出现且 SQL 已写入。',
-  '4. 多标签引用：olap state 返回每个标签的 #id/SQL/引擎/状态；olap state/write/run/stop 都支持 tabId（从 1 开始）指定要读取、编辑、运行的标签，缺省用活动标签。用户消息里的 @olapN 或 @TabN（N 为标签 id，如 @olap3/@Tab3=标签 #3）表示引用面板标签 #N。',
+  '4. 多标签/片段引用：olap state 返回每个标签的 #id/SQL/引擎/状态；olap state/write/run/stop 都支持 tabId（从 1 开始）指定要读取、编辑、运行的标签，缺省用活动标签。用户消息里的 @olapN 或 @TabN（N 为标签 id，如 @olap3/@Tab3=标签 #3）表示引用面板标签 #N；**带行区间的 @olapN:Lx-y（如 @olap3:L3-10）表示用户指定了该标签的第 x~y 行**——需要读取该片段内容时用 olap state {tabId:N, lines:[x,y]}（返回仅该区间的 SQL）；需要修改该片段用 olap.write {tabId, lines, sql}（按行替换）。',
   '5. 运行：只有用户要求运行/看结果时才 olap run（不传 sql 跑指定/活动标签；engine/dsId 自动继承面板，缺省 impala engine=2 dsId=2、hive engine=1）。**若 run 前刚 write 过，先 state 确认 SQL 已在编辑器再 run**（避免跑到旧内容）。',
   '6. 本模式只做 SQL 编辑与执行：除非用户明确要求分析/解读，禁止对查询数据做主动分析、总结或建议；run 结果按需汇报 columns/rows/total/executeId 即可。',
   '7. 历史/下载/工单等操作也通过 olap 工具完成。',

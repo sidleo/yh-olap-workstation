@@ -430,6 +430,47 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
         return ok
       } catch (e) { return false }
     }
+    // 引用编辑器选中片段：以「标签#id + 行区间」块形式插入聊天框。
+    // 模型收到展开文本 @olapN:Lx-y 后，用 olap state {tabId, lines:[x,y]} 精确读该段。
+    // label 用行号摘要（短小、不占上下文），完整 SQL 由模型按需读取（渐进披露）。
+    function referSelection(tab, selStart, selEnd, st) {
+      if (!tab || selStart === undefined || selEnd === undefined || selEnd <= selStart) return false
+      const sid = activePanelSid || (st && st.__id) || null
+      // 计算选中区间的逻辑起止行（1-based）
+      const before = (tab.sql || '').slice(0, selStart)
+      const lineStart = (before.match(/\n/g) || []).length + 1
+      const selText = (tab.sql || '').slice(selStart, selEnd)
+      // 选区以换行结尾（如整行选中含末尾 \n）时，结束行取最后非空内容行，避免多算一行
+      const trimmed = selText.replace(/\n+$/, '')
+      const lineEnd = lineStart + (trimmed.match(/\n/g) || []).length
+      const rangeRef = 'olap' + tab.id + ':L' + lineStart + '-' + lineEnd
+      // label 显示片段摘要（单行截断，块内可见）
+      const firstLine = (selText.split('\n')[0] || '').trim()
+      const label = '#' + tab.id + ' L' + lineStart + '-' + lineEnd + (firstLine ? ' 「' + (firstLine.length > 28 ? firstLine.slice(0, 28) + '…' : firstLine) + '」' : '')
+      let done = false
+      try {
+        const conv = ctx.get('conversation')
+        const sessionsSvc = ctx.get('sessions')
+        if (conv && conv.input && sessionsSvc && sid && typeof sessionsSvc.scope === 'function') {
+          const actx = sessionsSvc.scope(sid)
+          const input = actx ? conv.input.for(actx) : undefined
+          const snap = input && input.state ? input.state.getSnapshot() : undefined
+          const draft = (snap && snap.draft) || ''
+          const span = { start: draft.length, end: draft.length, draftRev: snap ? snap.draftRev : 0 }
+          const reference = { source: 'olap', ref: rangeRef, label: label, clipboardText: '@' + rangeRef }
+          if (input && typeof input.insertReference === 'function') {
+            done = input.insertReference(reference, span) === true
+          }
+        }
+      } catch (e) { done = false }
+      if (done) { showToast(st, '已引用选中片段 ' + label + '（聊天框内显示为块）'); return true }
+      // 兜底：纯文本引用
+      const ref = '@' + rangeRef
+      if (fillComposer(ref)) { showToast(st, '已添加选中片段引用 ' + ref); return true }
+      else if (copyToClipboard(ref)) { showToast(st, '已复制 ' + ref + '，粘贴到聊天框即可（会显示为块）'); return true }
+      return false
+    }
+
     function referTab(t, st) {
       // ===== WORKSTATION: 引用插入真正的 occurrence 块（与 @olap 菜单 onPick 同款 ReferenceInsert）。
       // label 用标签名（任意文本，含中文/空格），块在 composer 中显示为 chip；
@@ -1897,6 +1938,29 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
         if (complTimer.current) clearTimeout(complTimer.current)
         complTimer.current = setTimeout(function () { setCompl(null) }, 3000)
       }
+      // ===== WORKSTATION: 编辑器右键菜单（选中 SQL 片段 → 引用到聊天框）=====
+      const [selMenu, setSelMenu] = react.useState(null) // { x, y, selStart, selEnd }
+      // 点击菜单外关闭
+      react.useEffect(function () {
+        if (!selMenu) return
+        const onDoc = function (e) {
+          const el = document.querySelector('.yh-selmenu')
+          if (el && !el.contains(e.target)) setSelMenu(null)
+        }
+        document.addEventListener('mousedown', onDoc)
+        return function () { document.removeEventListener('mousedown', onDoc) }
+      }, [selMenu])
+      const onEdContextMenu = function (e) {
+        e.preventDefault()
+        const ta = taRef.current
+        if (!ta) return
+        const s = ta.selectionStart, en = ta.selectionEnd
+        // 有非空选区才给「引用选中」；无选区给出空态提示（不弹菜单，让默认菜单走）
+        if (s !== undefined && en !== undefined && s !== en && (en - s) > 0) {
+          setCompl(null)
+          setSelMenu({ x: e.clientX, y: e.clientY, selStart: s, selEnd: en })
+        }
+      }
 
       const tab = activeTab(st)
       const sql = tab ? tab.sql : ''
@@ -2365,13 +2429,31 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
             h('div', { className: 'yh-olap-hl-inner', ref: hlInnerRef },
               curTop !== 0 ? h('div', { className: 'yh-olap-curline', style: { top: curTop + 'px' } }) : null,
               highlight(sql, tab && tab.engine), ...mcurMarkers)),
-          h('textarea', { className: 'yh-olap-input', ref: taRef, value: sql, spellCheck: false, wrap: 'soft', onScroll: onScroll, onKeyDown: onKeyDown, onBeforeInput: onBeforeInput, onInput: onInput, onMouseDown: onMouseDown, onDoubleClick: onDblClickParen, onKeyUp: function () { syncCaret() }, onMouseUp: function () { syncCaret() }, onPaste: function () { markPaste() }, onCompositionStart: function () { composingRef.current = true }, onCompositionEnd: function () { composingRef.current = false }, onBlur: function () { if (st.mcursors && st.mcursors.length) { st.mcursors = []; bump() } timer.timeout(function () { setCompl(null); bump() }, 120) } })),
+          h('textarea', { className: 'yh-olap-input', ref: taRef, value: sql, spellCheck: false, wrap: 'soft', onScroll: onScroll, onKeyDown: onKeyDown, onBeforeInput: onBeforeInput, onInput: onInput, onMouseDown: onMouseDown, onDoubleClick: onDblClickParen, onKeyUp: function () { syncCaret() }, onMouseUp: function () { syncCaret() }, onPaste: function () { markPaste() }, onContextMenu: onEdContextMenu, onCompositionStart: function () { composingRef.current = true }, onCompositionEnd: function () { composingRef.current = false }, onBlur: function () { if (st.mcursors && st.mcursors.length) { st.mcursors = []; bump() } timer.timeout(function () { setCompl(null); bump() }, 120) } })),
         compl ? h('div', { className: 'yh-olap-complete', style: { left: compl.x, top: compl.y } },
           compl.list.map(function (it, i) {
             return h('div', { key: it.kind + it.text + i, className: i === compl.sel ? 'sel' : '', onMouseDown: function (e) { e.preventDefault(); applyCompletion(it) } },
               h('span', { className: 'k' }, it.text),
               h('span', { className: 'd' }, typeDesc(it.desc || it.kind)))
-          })) : null)
+          })) : null,
+        // ===== WORKSTATION: 编辑器右键菜单（引用选中 SQL 片段）=====
+        selMenu ? h('div', { className: 'yh-olap-cmenu yh-selmenu', style: { left: Math.min(selMenu.x, window.innerWidth - 240), top: Math.min(selMenu.y, window.innerHeight - 160) }, onMouseDown: function (e) { e.stopPropagation() }, onContextMenu: function (e) { e.preventDefault(); e.stopPropagation() } },
+          h('div', { className: 'yh-olap-citem', onClick: function () {
+            const m = selMenu
+            setSelMenu(null)
+            if (referSelection(tab, m.selStart, m.selEnd, st)) { /* toast 已在函数内 */ }
+          }, title: '把选中的 SQL 片段以「标签#id + 行区间」块加入聊天框，模型可据此精确读取该段' }, '引用选中 SQL（添加到聊天框）'),
+          h('div', { className: 'yh-olap-citem', onClick: function () {
+            const m = selMenu
+            setSelMenu(null)
+            const ta = taRef.current
+            if (ta) {
+              const sel = ta.value.slice(m.selStart, m.selEnd)
+              if (copyToClipboard(sel)) showToast(st, '已复制选中 SQL')
+              else showToast(st, '复制失败')
+            }
+          }, title: '复制选中的 SQL 原文' }, '复制选中 SQL'))
+          : null)
     }
 
     function doRun(st, sid, bump, onlyLines) {
