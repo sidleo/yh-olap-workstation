@@ -3654,11 +3654,15 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
       })
     }
 
-    // ---- 面板状态上报（节流 ≥1s，让模型 olap state 看得见）----
+    // ---- 面板状态上报（debounce 300ms，让模型 olap state 看得见）----
+    // ===== WORKSTATION: 延迟从 1s 降到 300ms —— 用户输入/操作后若立即让模型
+    // state 读面板，1s 延迟内 host lastState 还是旧值 → 模型读到空/旧 SQL 误判
+    // （会话 f5bdf152 实测：模型反复 state 读空、被迫 grep/bash 找 SQL，体验不顺畅）。
+    // 300ms 既够防抖（输入不频繁上传），又让模型快速 state 能读到最新。=====
     let uploadPending = null
     function uploadThrottle(fn) {
       if (uploadPending) { uploadPending.fn = fn; return }
-      uploadPending = { fn: fn, timer: setTimeout(function () { const f = uploadPending.fn; uploadPending = null; f() }, 1000) }
+      uploadPending = { fn: fn, timer: setTimeout(function () { const f = uploadPending.fn; uploadPending = null; f() }, 300) }
     }
     function uploadPanelState(st, sid) {
       const state = {
@@ -3744,6 +3748,10 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
         loadCollect(st, sid, bump)
         const stop = timer.interval(function () {
           wsApplyLayout()
+          // ===== WORKSTATION: 每次 poll 顺带上传面板状态 —— 保证 host lastState 常新
+          // （≤1.5s 滞后）。即使 debounce 上传被高频操作推迟/丢失，模型 olap state 也
+          // 能读到最新 SQL；否则用户刚编辑完就让模型改，模型会读到旧/空（f5bdf152 实测）。=====
+          uploadPanelState(getStore(sid), sid)
           callHost('olap.panel.poll', { sessionId: sid }).then(function (r) {
             if (!r || !r.ok || !r.commands || !r.commands.length) return
             applyCommands(getStore(sid), sid, r.commands)
