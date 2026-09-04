@@ -849,6 +849,12 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
         st.activeTab = st.tabs[0].id
         st.__wsRestored = true
         emitStore(sid)
+        // ===== WORKSTATION: 恢复后必须上传 host —— 否则模型 olap state 读到的是恢复前
+        // 的空快照（host lastState 未更新），报"SQL 为空"无法修改（会话 ab924be4 实测：
+        // 用户刷新后引用 L13，模型 state 读空）。立即上传（绕过 1s 节流，模型可能马上
+        // state 验证）。=====
+        if (uploadPending) { clearTimeout(uploadPending.timer); uploadPending = null }
+        uploadPanelState(st, sid)
       }
     }
     function wsApplyLayout() {
