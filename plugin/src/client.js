@@ -818,24 +818,31 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
         const sqls = r.sql || []
         if (!sqls.length) { wm.loaded = true; wm.tabs = null; if (cb) cb(); return }
         const tabs = []
-        let done = 0
-        sqls.forEach(function (f) {
-          // ===== WORKSTATION: 文件名以 id 为准（纯数字）。旧格式 `<id>-<名>.sql` 不再恢复（避免同 id 冲突）=====
-          if (!/^\d+$/.test(f.name)) { done++; if (done >= sqls.length) { wm.loaded = true; wm.tabs = tabs; if (cb) cb() }; return }
+        // ===== WORKSTATION: 并行读取所有文件（原串行：每文件 3 个 RPC 依次等，
+        // N 文件 = 3N 串行往返，刷新后标签恢复慢的元凶之一）。改为每文件 3 个 read
+        // 并行 + 文件间并行，本地磁盘读取整体 <500ms。=====
+        const valid = sqls.filter(function (f) {
+          return /^\d+$/.test(f.name) // 旧格式 `<id>-<名>.sql` 不恢复（避免同 id 冲突）
+        })
+        const pAll = valid.map(function (f) {
           const id = Number(f.name)
           const nm = 'Tab' + id
-          callHost('ws.workspace.read', { sessionId: sid, kind: 'sql', name: f.name }).then(function (sr) {
+          return Promise.all([
+            callHost('ws.workspace.read', { sessionId: sid, kind: 'sql', name: f.name }),
+            callHost('ws.workspace.read', { sessionId: sid, kind: 'params', name: f.name }),
+            callHost('ws.workspace.read', { sessionId: sid, kind: 'note', name: f.name }),
+          ]).then(function (rs) {
+            const sr = rs[0], pr = rs[1], nr = rs[2]
             const t = { id: id, name: nm, sql: (sr && sr.ok) ? sr.content : '', params: {}, note: '', engine: '2', dsId: 2, wsFile: f.name }
-            callHost('ws.workspace.read', { sessionId: sid, kind: 'params', name: f.name }).then(function (pr) {
-              if (pr && pr.ok) { try { const p = JSON.parse(pr.content); if (p && typeof p === 'object') { t.params = p; if (p.__name) t.name = p.__name; delete t.params.__name } } catch (e) { /* ignore */ } }
-              callHost('ws.workspace.read', { sessionId: sid, kind: 'note', name: f.name }).then(function (nr) {
-                if (nr && nr.ok) t.note = nr.content
-                tabs.push(t)
-                done++
-                if (done >= sqls.length) { wm.loaded = true; wm.tabs = tabs; if (cb) cb() }
-              })
-            })
+            if (pr && pr.ok) { try { const p = JSON.parse(pr.content); if (p && typeof p === 'object') { t.params = p; if (p.__name) t.name = p.__name; delete t.params.__name } } catch (e) { /* ignore */ } }
+            if (nr && nr.ok) t.note = nr.content
+            tabs.push(t)
           })
+        })
+        Promise.all(pAll).then(function () {
+          wm.loaded = true
+          wm.tabs = tabs
+          if (cb) cb()
         })
       })
     }
@@ -919,8 +926,10 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
         try { sessionsSvc.open(ids[0]) } catch (e) { wsAutoOpenDone = false; /* 列表刚变，下轮再试 */ }
       }
     }
-    wsAutoOpenTimer = setInterval(wsAutoOpenFirst, 1200)
-    setTimeout(wsAutoOpenFirst, 2500)
+    wsAutoOpenTimer = setInterval(wsAutoOpenFirst, 500)
+    // ===== WORKSTATION: 首次尽快确立会话（原 2.5s）—— 会话 current 确立越早，
+    // OlapPanel sid 越早就绪 → 标签恢复越早。刷新后"几秒才出标签"一部分来自此延迟。=====
+    setTimeout(wsAutoOpenFirst, 300)
     // 新建会话自动切换跟随（见 wsFollowNewSessions 注释）
     let wsLastSessionIds = null
     let wsFollowTimer = null
@@ -3724,6 +3733,11 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
       const bump = function () { st.version++; emitStore(sid); schedulePanelUpload(st, sid) }
 
       react.useEffect(function () {
+        // ===== WORKSTATION: sid 未就绪（整页刷新后 sessions 服务还没加载完，
+        // currentSessionId() 返回空）时不启动恢复 —— 否则 wsLoad('') 查全局空目录
+        // 白跑一次 + 等 sid 轮询切换才恢复，造成"刷新后几秒标签才出现"（用户实测）。
+        // sid 就绪后 effect 因 [sid] 变化自动重跑并正常恢复。=====
+        if (!sid) return
         uploadPanelState(getStore(sid), sid)
         // ===== WORKSTATION: 工作站布局 —— OLAP 常驻左栏，始终展开 details =====
         wsApplyLayout()
