@@ -77,7 +77,7 @@ node -e "new Function(require('fs').readFileSync('plugin/src/client.js','utf8'))
 - 布局重排已验证（计算样式，含**列高**）：`grid-template-columns: 1013px 699px`、`grid-template-rows: 885px`，侧栏 `display:none`，会话列在右、OLAP 列在左（details 列 `h:885px` 可见），overlay 跨列，拖动条隐藏。**OLAP 编辑器在视口内（y:74, h:499）。**
 - OLAP 面板端到端实测：编辑器输入 `select 1 as a,2 as b,3 as c` → 点「执行」→ 结果 tab 显示「共 1 行 / a b c / 1 2 3」。
 - RPC 全链路：`ws.workspace.{list,save,read,rename,remove}`（sql/params/notes 多文件往返）、`ws.sqlkb.{list,get}`、`ws.sessions.list` 均返回 `ok:true`。
-- preset 生效：浏览器显示「数据分析师 & 数据工程师工作站」；API Key 提示消失（凭据已播种）。
+- preset 生效：浏览器显示「OLAP」；API Key 提示消失（凭据已播种）。
 - **端到端会话已实测**：在工作站里发消息，模型正常回复（「我是专为永辉数据中台 OLAP 工作站打造的取数分析助手…」），OLAP 面板在左、会话在右。
 
 ### 排障记录（2026-08-30）

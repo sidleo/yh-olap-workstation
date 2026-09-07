@@ -12,7 +12,7 @@
 //  L222-341  引擎词表（IMPALA/HIVE 关键字与函数）+ tokenize/highlight
 //  L343-364  makeStore()：per-session 可变全局 store 初始状态
 //  L366-432  UI 杂项：toast / 填聊天框 / 复制 / 标签引用(referTab)
-//  L433-628  编辑器键盘辅助 + 轻量多光标 + 软换行光标坐标（wrap 像素估算）
+//  L433-628  编辑器键盘辅助 + 轻量多光标 + 软换行光标坐标（wrap 像素估算）+ 查找替换纯函数
 //  L637-660  store 注册表（stores/listeners/useStore）
 //  L661-913  本地工作区持久化（per-session 多文件）+ 布局跟随 + 新会话重置
 //  L915-1019 下载 blob / 数据源/库/表/列懒加载
@@ -138,6 +138,27 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
 .yh-olap-input{position:absolute;inset:0;margin:0;padding:10px 12px;background:transparent;color:transparent;caret-color:var(--dsw-alias-label-primary,#fff);border:0;outline:none;resize:none;white-space:pre-wrap;overflow-x:hidden;overflow-y:overlay;font:13px/1.55 ui-monospace,Menlo,Consolas,monospace;box-sizing:border-box;letter-spacing:normal;word-spacing:0;word-break:normal;overflow-wrap:break-word;line-height:1.55}
 .yh-olap-input::-webkit-scrollbar,.yh-olap-input::-webkit-scrollbar-track,.yh-olap-input::-webkit-scrollbar-thumb,.yh-olap-input::-webkit-scrollbar-corner{cursor:default}
 .yh-olap-mcur{position:absolute;width:1px;height:13px;background:var(--yh-ui-brand);pointer-events:none;z-index:2}
+/* ===== WORKSTATION: 查找替换小部件（编辑器右上角浮层，VSCode 风格）===== */
+.yh-olap-findbox{position:absolute;top:6px;right:14px;z-index:30;background:var(--dsw-alias-bg-overlay,#1b2431);border:1px solid var(--dsw-alias-border-l2,#33455a);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.4);padding:6px;user-select:none}
+.yh-olap-findrow{display:flex;align-items:center;gap:4px}
+.yh-olap-findrow.rep{margin-top:5px}
+.yh-olap-findgap{flex:0 0 22px}
+.yh-olap-findinp{width:190px;height:24px;padding:0 6px;font-size:12px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2,#33455a);background:var(--dsw-alias-bg-layer-2,#1d2633);color:var(--dsw-alias-label-primary,#bcd);box-sizing:border-box;outline:none;user-select:text}
+.yh-olap-findinp:focus{border-color:var(--yh-ui-brand)}
+.yh-olap-findinp.err{border-color:var(--yh-ui-danger)}
+.yh-olap-findbtn{height:22px;min-width:22px;padding:0 4px;font-size:11.5px;line-height:1;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--dsw-alias-label-secondary,#8a9aae);cursor:pointer;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center}
+.yh-olap-findbtn:hover{background:var(--dsw-alias-bg-layer-2,#1d2633);color:var(--dsw-alias-label-primary,#cdd7e0)}
+.yh-olap-findbtn.on{border-color:var(--yh-ui-brand);color:var(--yh-ui-brand);background:var(--yh-ui-brand-weak)}
+.yh-olap-findbtn.act{border-color:var(--dsw-alias-border-l2,#33455a);padding:0 8px}
+.yh-olap-findcnt{font-size:11px;color:var(--dsw-alias-label-secondary,#8a9aae);min-width:34px;text-align:center;flex:0 0 auto;white-space:nowrap}
+.yh-olap-findcnt.none{color:var(--yh-ui-danger)}
+.yh-olap-findhit{position:absolute;z-index:-1;background:rgba(65,118,230,.22);border-radius:2px;pointer-events:none}
+.yh-olap-findhit.cur{background:rgba(65,118,230,.5);border:1px solid var(--yh-ui-brand);box-sizing:border-box}
+html[style*="color-scheme: dark"] .yh-olap-findhit{background:rgba(77,140,255,.24)}
+html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,255,.55)}
+/* 查找替换按钮悬停提示气泡（fixed 定位，避免被 findbox overflow 裁剪） */
+.yh-olap-findtip{position:fixed;z-index:400;max-width:260px;padding:4px 8px;font-size:11.5px;line-height:1.5;color:var(--dsw-alias-label-primary,#e8eef4);background:var(--dsw-alias-bg-overlay,#1b2431);border:1px solid var(--dsw-alias-border-l2,#33455a);border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.4);pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:yhFindTipIn .1s ease-out}
+@keyframes yhFindTipIn{from{opacity:0;transform:translateY(-2px)}to{opacity:1;transform:none}}
 .yh-olap-resizer{flex:0 0 6px;cursor:row-resize;background:var(--dsw-alias-border-l1,#242d3a)}
 .yh-olap-bot{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .yh-olap-tabs{flex:0 0 34px;display:flex;align-items:flex-end;gap:14px;padding:0 12px;border-bottom:1px solid var(--dsw-alias-border-l1,#242d3a);justify-content:flex-start}
@@ -191,6 +212,16 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
 .yh-olap-prow{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .yh-olap-prow .yh-olap-plabel{flex:0 0 96px;font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace;color:var(--dsw-alias-label-secondary,#7a8ba0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .yh-olap-prow input{flex:1 1 auto;width:auto;margin-bottom:0}
+.yh-olap-dirlabel{font-size:11px;color:var(--dsw-alias-label-secondary,#7a8ba0);margin:2px 0 4px}
+.yh-olap-dirs{max-height:168px;overflow:auto;border:1px solid var(--dsw-alias-border-l2,#33455a);border-radius:6px;background:var(--dsw-alias-bg-layer-2,#1d2633);padding:3px 0}
+.yh-olap-dirrow{display:flex;align-items:center;gap:2px;padding:2px 8px 2px 6px;cursor:pointer;font-size:12px;line-height:17px;color:var(--dsw-alias-label-primary,#d7e2ee);white-space:nowrap}
+.yh-olap-dirrow:hover{background:var(--dsw-alias-bg-layer-1,#1a2230)}
+.yh-olap-dirrow .tw{flex:0 0 14px;width:14px;text-align:center;color:var(--dsw-alias-label-secondary,#7a8ba0)}
+.yh-olap-dirrow .nm{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.yh-olap-dirrow.sel{background:var(--yh-ui-brand-weak)}
+.yh-olap-dirrow.sel .nm,.yh-olap-dirrow.sel .ck{color:var(--yh-ui-brand)}
+.yh-olap-dirrow .ck{flex:0 0 auto;color:var(--yh-ui-brand);font-weight:700;margin-left:4px}
+.yh-olap-dirpath{font-size:11px;color:var(--dsw-alias-label-secondary,#7a8ba0);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .yh-olap-modal button{flex:1;height:28px;border-radius:4px;border:1px solid var(--dsw-alias-border-l2,#33455a);background:var(--dsw-alias-bg-layer-2,#1d2633);color:var(--dsw-alias-label-primary,#d7e2ee);cursor:pointer;font-size:12.5px}
 .yh-olap-modal button.pri{background:var(--yh-ui-brand);border-color:var(--yh-ui-brand);color:var(--yh-ui-ondark)}
 .yh-olap-modal .row{display:flex;gap:8px}
@@ -384,6 +415,10 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
         paramModalFor: false, accManage: false, dlDetail: null, collectSaveFor: false, fullscreen: false,
         editingTab: null, editingName: '', toast: '',
         mcursors: [],
+        // ===== WORKSTATION: 查找替换小部件状态（VSCode 风格，per-session 隔离，换 tab 保留）=====
+        // open=显示 findbox；showRep=展开替换行；q/rep=查找/替换文本；caseS/word/re=三开关；
+        // pos=当前匹配锚点字符位（当前匹配=首个 start>=pos 的匹配，导航/替换时更新）；focusTick=请求聚焦输入框
+        findBox: { open: false, showRep: false, q: '', rep: '', caseS: false, word: false, re: false, pos: 0, focusTick: 0 },
         // ===== WORKSTATION: 便签/工作区/知识库 状态 =====
         noteModalFor: false, noteText: '',
         // ===== WORKSTATION: 通用对话框（自绘 confirm/input，替代 window.confirm/prompt）=====
@@ -562,6 +597,74 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
       } else {
         setTaValue(ta, val.slice(0, s) + '/**/' + val.slice(e), s + 2, s + 2)
       }
+    }
+
+    // ===== WORKSTATION: 编辑器查找替换（VSCode 风格）—— 纯函数部分 =====
+    function escapeRe(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
+    function isWordChar(c) { return /[A-Za-z0-9_]/.test(c) }
+    // 全字匹配边界：匹配串首尾字符外不能是 word char（首尾在文本边界视为边界）
+    function isWordBoundary(sql, s, e) {
+      if (s > 0 && isWordChar(sql[s - 1])) return false
+      if (e < sql.length && isWordChar(sql[e])) return false
+      return true
+    }
+    // 计算全部匹配：返回 [{start,end}]；正则非法返回 {error:true}
+    function computeMatches(sql, q, opts) {
+      const text = String(sql || '')
+      if (!q) return []
+      const out = []
+      if (opts.re) {
+        let re
+        try { re = new RegExp(q, opts.caseS ? 'g' : 'gi') } catch (e) { return { error: true } }
+        let guard = 0
+        let m
+        while ((m = re.exec(text))) {
+          if (!opts.word || isWordBoundary(text, m.index, m.index + m[0].length)) out.push({ start: m.index, end: m.index + m[0].length })
+          if (m[0].length === 0) re.lastIndex++ // 零宽匹配（如 a*）前进一位防死循环
+          if (++guard > 20000 || out.length > 5000) break
+        }
+      } else {
+        const hay = opts.caseS ? text : text.toLowerCase()
+        const needle = opts.caseS ? q : q.toLowerCase()
+        let i = 0
+        while (out.length <= 5000) {
+          i = hay.indexOf(needle, i)
+          if (i === -1) break
+          const end = i + q.length
+          if (!opts.word || isWordBoundary(text, i, end)) out.push({ start: i, end: end })
+          i = end // 非重叠推进（同 VSCode 字面量行为）
+        }
+      }
+      return out
+    }
+    // 匹配区间 → 高亮矩形（支持软换行/跨行）：起点 cursorXY 锚定，之后逐字符增量推进，
+    // 行宽超 usableW 折到下一视觉行；遇 \n 用 cursorXY 重新锚定下一逻辑行（防累计误差）。
+    // 返回 [{left,top,width,height}]，坐标系与 curline/mcur 一致（hl-inner 内容盒）。
+    function matchRects(sql, s, e, uw) {
+      const rects = []
+      if (!(e > s)) return rects
+      let xy = cursorXY(sql, s, uw)
+      let segLeft = xy.x, segTop = xy.y - 3, segW = 0
+      let used = xy.x - ED_PAD_LEFT // 当前视觉行已占宽（从行首算）
+      const flush = function () { if (segW > 0) rects.push({ left: segLeft, top: segTop, width: segW, height: ED_LINE_H }) }
+      for (let p = s; p < e; p++) {
+        const ch = sql[p]
+        if (ch === '\n') {
+          flush(); segW = 0
+          xy = cursorXY(sql, p + 1, uw)
+          segLeft = xy.x; segTop = xy.y - 3; used = 0
+          continue
+        }
+        const cw = chWidth(ch)
+        if (used + cw > uw && cw <= uw) { // 软换行：折到下一视觉行（与 cursorXY 折行判定一致）
+          flush(); segW = 0
+          segLeft = ED_PAD_LEFT; segTop += ED_LINE_H; used = 0
+        }
+        if (segW === 0) segLeft = ED_PAD_LEFT + used
+        used += cw; segW += cw
+      }
+      flush()
+      return rects
     }
 
     // —— 轻量多光标（Cmd/Ctrl+点击 添加光标，输入/退格/回车/粘贴同步到所有光标）——
@@ -1961,6 +2064,27 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
       }
       // ===== WORKSTATION: 编辑器右键菜单（选中 SQL 片段 → 引用到聊天框）=====
       const [selMenu, setSelMenu] = react.useState(null) // { x, y, selStart, selEnd }
+      // ===== WORKSTATION: 查找替换按钮悬停提示（原生 title 延迟久且样式不统一，自绘即时气泡）=====
+      const [tip, setTip] = react.useState(null) // { x, y, text }（fixed 坐标）
+      const tipOn = function (e, text) {
+        if (!text) return
+        const r = e.currentTarget.getBoundingClientRect()
+        // 优先放按钮下方；视口放不下（编辑器矮靠底）则翻到上方
+        const below = r.bottom + 7
+        const up = r.top - 7
+        const placeUp = below + 34 > window.innerHeight && up - 34 > 0
+        const y = placeUp ? up : below
+        // 横向防溢出：以按钮中心为锚，超出视口右缘则左移
+        let x = r.left
+        const tw = Math.min(260, window.innerWidth - 16)
+        x = Math.max(4, Math.min(x, window.innerWidth - tw - 4))
+        setTip({ x: x, y: y, text: text, above: placeUp })
+      }
+      const tipOff = function () { setTip(null) }
+      // 悬停提示只在 findbox 打开期间显示；小部件关闭/卸载时清理
+      react.useEffect(function () {
+        if (!(st.findBox && st.findBox.open)) setTip(null)
+      }, [st.findBox && st.findBox.open])
       // 点击菜单外关闭
       react.useEffect(function () {
         if (!selMenu) return
@@ -2195,6 +2319,11 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
           if (ta0) { const t0 = activeTab(st); if (t0 && t0.running) killRun(st, sid, bump); else doRun(st, sid, bump) }
           return
         }
+        // ===== WORKSTATION: Cmd/Ctrl+F 查找、Cmd/Ctrl+Alt+F（Win 为 Ctrl+H）查找替换、Esc 关闭 =====
+        const modF = modKeyOf(e)
+        if (modF && !e.altKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); openFind(false); return }
+        if ((modF && e.altKey && (e.key === 'f' || e.key === 'F')) || (!/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') && modF && (e.key === 'h' || e.key === 'H'))) { e.preventDefault(); openFind(true); return }
+        if (e.key === 'Escape' && st.findBox && st.findBox.open) { e.preventDefault(); closeFind(); return }
         if (compl) {
           if (e.key === 'Tab') { e.preventDefault(); applyCompletion(compl.list[compl.sel]); return }
           if (e.key === 'ArrowDown') { e.preventDefault(); setCompl(Object.assign({}, compl, { sel: Math.min(compl.sel + 1, compl.list.length - 1) })); return }
@@ -2431,6 +2560,181 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
         if (compl) setCompl(null)
       }
 
+      // ===== WORKSTATION: 查找替换（VSCode 风格）—— 小部件状态在 st.findBox（per-session）=====
+      const fb = st.findBox
+      const findInputRef = react.useRef(null)
+      const replaceInputRef = react.useRef(null)
+      const fbFocusRef = react.useRef('find') // 替换操作后焦点还原到最近使用的输入框
+      // focusTick 变化（每次 openFind）→ 聚焦并全选查找输入框；普通 bump 重渲染不重复聚焦
+      react.useEffect(function () {
+        if (fb && fb.open && findInputRef.current) { findInputRef.current.focus(); findInputRef.current.select() }
+      }, [fb && fb.open, fb && fb.focusTick])
+      const modKeyOf = function (e) {
+        return /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? e.metaKey : e.ctrlKey
+      }
+      const openFind = function (withRep) {
+        const ta = taRef.current
+        const f = st.findBox = Object.assign({ open: false, showRep: false, q: '', rep: '', caseS: false, word: false, re: false, pos: 0, focusTick: 0 }, st.findBox || {})
+        f.open = true
+        if (withRep) f.showRep = true
+        f.pos = ta ? ta.selectionStart : 0
+        // VSCode 行为：查找框为空时预填编辑器选中文本
+        if (ta && ta.selectionStart !== ta.selectionEnd && !f.q) f.q = ta.value.slice(ta.selectionStart, ta.selectionEnd)
+        f.focusTick = (f.focusTick || 0) + 1
+        setCompl(null)
+        bump()
+      }
+      const closeFind = function () {
+        st.findBox.open = false
+        bump()
+        const ta = taRef.current
+        if (ta) ta.focus()
+      }
+      // 匹配派生（渲染体纯计算，不 emit）：matches + 当前索引（首个 start>=pos，无则回绕 0）
+      const findData = (function () {
+        if (!fb || !fb.open) return null
+        const q = fb.q || ''
+        if (!q) return { matches: [], cur: -1, error: false }
+        const res = computeMatches(sql, q, { caseS: fb.caseS, word: fb.word, re: fb.re })
+        if (res && res.error) return { matches: [], cur: -1, error: true }
+        let cur = -1
+        for (let i = 0; i < res.length; i++) { if (res[i].start >= fb.pos) { cur = i; break } }
+        if (cur === -1 && res.length) cur = 0
+        return { matches: res, cur: cur, error: false }
+      })()
+      // 把字符位置滚动到编辑器可视区（垂直；textarea 无横向滚动）
+      const scrollPosIntoView = function (text, pos) {
+        const ta = taRef.current
+        if (!ta) return
+        const xy = cursorXY(text, pos, usableWidthOf(ta))
+        const top = xy.y - 3
+        if (top < ta.scrollTop + 10) ta.scrollTop = Math.max(0, top - ED_LINE_H - 10)
+        else if (top + ED_LINE_H > ta.scrollTop + ta.clientHeight - 10) ta.scrollTop = top + ED_LINE_H + 10 - ta.clientHeight
+        syncHl()
+      }
+      const gotoMatch = function (dir) {
+        if (!findData || !findData.matches.length || findData.cur < 0) return
+        const ms = findData.matches
+        const curM = ms[findData.cur]
+        let target = null
+        if (dir > 0) {
+          for (let i = 0; i < ms.length; i++) if (ms[i].start >= curM.end) { target = i; break }
+          if (target === null) target = 0 // 回绕
+        } else {
+          for (let i = ms.length - 1; i >= 0; i--) if (ms[i].start < curM.start) { target = i; break }
+          if (target === null) target = ms.length - 1 // 回绕
+        }
+        fb.pos = ms[target].start
+        scrollPosIntoView(sql, ms[target].start)
+        bump()
+      }
+      // 程序性替换写入：优先 execCommand('insertText')（进浏览器 undo 栈可 Cmd+Z），失败回退 setTaValue
+      const writeReplaced = function (expected, selStart, selEnd, rep) {
+        const ta = taRef.current
+        if (!ta) return
+        ta.focus()
+        ta.setSelectionRange(selStart, selEnd)
+        wsNonKeyInput = true
+        let ok = false
+        try { ok = document.execCommand('insertText', false, rep) } catch (e) { ok = false }
+        if (!ok || ta.value !== expected) setTaValue(ta, expected, selStart + rep.length, selStart + rep.length)
+      }
+      const replacementFor = function (matched) {
+        let rep = fb.rep || ''
+        if (fb.re) {
+          try { rep = matched.replace(new RegExp(fb.q, fb.caseS ? '' : 'i'), fb.rep || '') } catch (e) { rep = fb.rep || '' }
+        }
+        return rep
+      }
+      const replaceCurrent = function () {
+        if (!findData || !findData.matches.length || findData.cur < 0) return
+        const ta = taRef.current
+        if (!ta || !tab || ta.value !== sql) return // 编辑器内容与渲染态不一致（模型刚写入）→ 放弃本次，等重渲染
+        const m = findData.matches[findData.cur]
+        const rep = replacementFor(sql.slice(m.start, m.end))
+        const expected = sql.slice(0, m.start) + rep + sql.slice(m.end)
+        if (st.mcursors && st.mcursors.length) st.mcursors = []
+        writeReplaced(expected, m.start, m.end, rep)
+        fb.pos = m.start + rep.length
+        // 下一个匹配滚入视区（按写入后的新文本计算）
+        const res2 = computeMatches(expected, fb.q, { caseS: fb.caseS, word: fb.word, re: fb.re })
+        if (res2 && !res2.error && res2.length) {
+          let tgt = -1
+          for (let i = 0; i < res2.length; i++) if (res2[i].start >= fb.pos) { tgt = i; break }
+          if (tgt === -1) tgt = 0
+          scrollPosIntoView(expected, res2[tgt].start)
+        }
+        bump()
+        const fr = fbFocusRef.current === 'rep' ? replaceInputRef : findInputRef
+        if (fr.current) fr.current.focus()
+      }
+      const replaceAllMatches = function () {
+        if (!findData || !findData.matches.length) return
+        const ta = taRef.current
+        if (!ta || !tab || ta.value !== sql) return // 同上：防模型并发写入被旧内容覆盖
+        const ms = findData.matches
+        let out = '', last = 0, count = 0
+        for (let i = 0; i < ms.length; i++) {
+          const m = ms[i]
+          out += sql.slice(last, m.start) + replacementFor(sql.slice(m.start, m.end))
+          last = m.end
+          count++
+        }
+        out += sql.slice(last)
+        if (out === sql) { showToast(st, '替换后与原文相同，无变化'); return } // 如 find/replace 相同文本
+        if (st.mcursors && st.mcursors.length) st.mcursors = []
+        writeReplaced(out, 0, ta.value.length, out)
+        fb.pos = 0
+        bump()
+        wsScheduleSave(sid) // onInput 已排存，兜底幂等再排一次
+        showToast(st, '已替换 ' + count + ' 处')
+        const fr = fbFocusRef.current === 'rep' ? replaceInputRef : findInputRef
+        if (fr.current) fr.current.focus()
+      }
+      // 输入框内的全局快捷键：Cmd/Ctrl+F 重新聚焦查找框、Cmd/Ctrl+Alt+F 展开替换行
+      const focusFindFromKeys = function (e) {
+        const mf = modKeyOf(e)
+        if (mf && !e.altKey && (e.key === 'f' || e.key === 'F')) {
+          e.preventDefault()
+          const inp = findInputRef.current
+          if (inp) { inp.focus(); inp.select() }
+          return true
+        }
+        if (mf && e.altKey && (e.key === 'f' || e.key === 'F')) {
+          e.preventDefault()
+          if (!fb.showRep) { fb.showRep = true }
+          bump()
+          const inp = findInputRef.current
+          if (inp) { inp.focus(); inp.select() }
+          return true
+        }
+        return false
+      }
+      const onFindInputKeyDown = function (e) {
+        if (e.nativeEvent && e.nativeEvent.isComposing) return // 输入法组词中 Enter 是确认候选
+        if (focusFindFromKeys(e)) return
+        if (e.key === 'Enter') { e.preventDefault(); gotoMatch(e.shiftKey ? -1 : 1); return }
+        if (e.key === 'Escape') { e.preventDefault(); closeFind() }
+      }
+      const onReplaceInputKeyDown = function (e) {
+        if (e.nativeEvent && e.nativeEvent.isComposing) return
+        if (focusFindFromKeys(e)) return
+        if (e.key === 'Enter') { e.preventDefault(); if (modKeyOf(e)) replaceAllMatches(); else replaceCurrent(); return }
+        if (e.key === 'Escape') { e.preventDefault(); closeFind() }
+      }
+      // 匹配高亮矩形（hl-inner 内 z-index:-1 叠文字下；上限 500 个防大 SQL 卡顿）
+      const findHits = (findData && findData.matches.length && sql) ? (function () {
+        const uw = usableWidthOf(taRef.current)
+        const out = []
+        const list = findData.matches.slice(0, 500)
+        for (let i = 0; i < list.length; i++) {
+          const rs = matchRects(sql, list[i].start, list[i].end, uw)
+          for (let j = 0; j < rs.length; j++) out.push({ r: rs[j], cur: i === findData.cur })
+        }
+        return out
+      })() : null
+      const findCountText = findData ? (fb.q ? (findData.error ? '无效正则' : (findData.matches.length ? (findData.cur + 1) + '/' + findData.matches.length : '无结果')) : '') : ''
+
       // ===== WORKSTATION: 当前光标所在物理行浅灰背景 top（软换行折行后高亮光标所在的那段）=====
       const curTop = sql ? (function () {
         const pos = Math.max(0, Math.min(caret, sql.length))
@@ -2449,6 +2753,9 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
           h('pre', { className: 'yh-olap-hl', ref: hlRef, 'aria-hidden': 'true' },
             h('div', { className: 'yh-olap-hl-inner', ref: hlInnerRef },
               curTop !== 0 ? h('div', { className: 'yh-olap-curline', style: { top: curTop + 'px' } }) : null,
+              findHits ? findHits.map(function (x, i) {
+                return h('div', { key: 'fh' + i, className: 'yh-olap-findhit' + (x.cur ? ' cur' : ''), style: { left: x.r.left + 'px', top: x.r.top + 'px', width: x.r.width + 'px', height: x.r.height + 'px' } })
+              }) : null,
               highlight(sql, tab && tab.engine), ...mcurMarkers)),
           h('textarea', { className: 'yh-olap-input', ref: taRef, value: sql, spellCheck: false, wrap: 'soft', onScroll: onScroll, onKeyDown: onKeyDown, onBeforeInput: onBeforeInput, onInput: onInput, onMouseDown: onMouseDown, onDoubleClick: onDblClickParen, onKeyUp: function () { syncCaret() }, onMouseUp: function () { syncCaret() }, onPaste: function () { markPaste() }, onContextMenu: onEdContextMenu, onCompositionStart: function () { composingRef.current = true }, onCompositionEnd: function () { composingRef.current = false }, onBlur: function () { if (st.mcursors && st.mcursors.length) { st.mcursors = []; bump() } timer.timeout(function () { setCompl(null); bump() }, 120) } })),
         compl ? h('div', { className: 'yh-olap-complete', style: { left: compl.x, top: compl.y } },
@@ -2474,7 +2781,32 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
               else showToast(st, '复制失败')
             }
           }, title: '复制选中的 SQL 原文' }, '复制选中 SQL'))
-          : null)
+           : null,
+        // ===== WORKSTATION: 查找替换小部件（VSCode 风格，编辑器右上角浮层）=====
+        fb && fb.open ? h('div', { className: 'yh-olap-findbox', onMouseDown: function (e) { e.stopPropagation() } },
+          h('div', { className: 'yh-olap-findrow' },
+            h('button', { className: 'yh-olap-findbtn tog' + (fb.showRep ? ' on' : ''), onMouseDown: function (e) { e.preventDefault() }, onClick: function () { fb.showRep = !fb.showRep; bump() }, onMouseEnter: function (e) { tipOn(e, fb.showRep ? '收起替换框' : '展开替换框（Cmd/Ctrl+Alt+F）') }, onMouseLeave: tipOff }, fb.showRep ? '▾' : '▸'),
+            h('input', { className: 'yh-olap-findinp' + (findData && findData.error ? ' err' : ''), ref: findInputRef, value: fb.q, placeholder: '查找', spellCheck: false,
+              onChange: function (e) { fb.q = e.target.value; fb.pos = taRef.current ? taRef.current.selectionStart : 0; bump() },
+              onFocus: function () { fbFocusRef.current = 'find' },
+              onKeyDown: onFindInputKeyDown }),
+            h('button', { className: 'yh-olap-findbtn opt' + (fb.caseS ? ' on' : ''), onMouseDown: function (e) { e.preventDefault() }, onClick: function () { fb.caseS = !fb.caseS; bump() }, onMouseEnter: function (e) { tipOn(e, '区分大小写：on=' + (fb.caseS ? '已开启' : '关闭') + '，点击切换') }, onMouseLeave: tipOff }, 'Aa'),
+            h('button', { className: 'yh-olap-findbtn opt' + (fb.word ? ' on' : ''), onMouseDown: function (e) { e.preventDefault() }, onClick: function () { fb.word = !fb.word; bump() }, onMouseEnter: function (e) { tipOn(e, '全字匹配：on=' + (fb.word ? '已开启' : '关闭') + '，只匹配完整单词') }, onMouseLeave: tipOff }, 'ab'),
+            h('button', { className: 'yh-olap-findbtn opt' + (fb.re ? ' on' : ''), onMouseDown: function (e) { e.preventDefault() }, onClick: function () { fb.re = !fb.re; bump() }, onMouseEnter: function (e) { tipOn(e, '正则表达式：on=' + (fb.re ? '已开启' : '关闭') + '，查找/替换支持 $1 分组') }, onMouseLeave: tipOff }, '.*'),
+            h('span', { className: 'yh-olap-findcnt' + (findData && (findData.error || !findData.matches.length) ? ' none' : '') }, findCountText),
+            h('button', { className: 'yh-olap-findbtn', onMouseDown: function (e) { e.preventDefault() }, onClick: function () { gotoMatch(-1) }, onMouseEnter: function (e) { tipOn(e, '上一个匹配（Shift+Enter）') }, onMouseLeave: tipOff }, '↑'),
+            h('button', { className: 'yh-olap-findbtn', onMouseDown: function (e) { e.preventDefault() }, onClick: function () { gotoMatch(1) }, onMouseEnter: function (e) { tipOn(e, '下一个匹配（Enter）') }, onMouseLeave: tipOff }, '↓'),
+            h('button', { className: 'yh-olap-findbtn', onMouseDown: function (e) { e.preventDefault() }, onClick: function () { closeFind() }, onMouseEnter: function (e) { tipOn(e, '关闭查找（Esc）') }, onMouseLeave: tipOff }, '×')),
+          fb.showRep ? h('div', { className: 'yh-olap-findrow rep' },
+            h('span', { className: 'yh-olap-findgap' }),
+            h('input', { className: 'yh-olap-findinp', ref: replaceInputRef, value: fb.rep, placeholder: '替换（正则可用 $1 引用分组）', spellCheck: false,
+              onChange: function (e) { fb.rep = e.target.value; bump() },
+              onFocus: function () { fbFocusRef.current = 'rep' },
+              onKeyDown: onReplaceInputKeyDown }),
+            h('button', { className: 'yh-olap-findbtn act', onMouseDown: function (e) { e.preventDefault() }, onClick: function () { replaceCurrent() }, onMouseEnter: function (e) { tipOn(e, '替换当前匹配（Enter）') }, onMouseLeave: tipOff }, '替换'),
+            h('button', { className: 'yh-olap-findbtn act', onMouseDown: function (e) { e.preventDefault() }, onClick: function () { replaceAllMatches() }, onMouseEnter: function (e) { tipOn(e, '全部替换（Cmd/Ctrl+Enter）') }, onMouseLeave: tipOff }, '全部')) : null,
+        // ===== WORKSTATION: 悬停提示气泡（fixed 定位，findbox 内按钮悬停显示）=====
+        tip ? h('div', { className: 'yh-olap-findtip', style: { left: tip.x + 'px', top: tip.y + 'px' } }, tip.text) : null) : null)
     }
 
     function doRun(st, sid, bump, onlyLines) {
@@ -2522,8 +2854,45 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
       let gotResult = false
       let gotError = false
       let logFinished = false
+      // ===== WORKSTATION: 轮询统一收尾函数 —— 无论哪条路径判定失败/成功都走这里，
+      // 保证 running 一定复位（执行按钮不会卡在「停止」）。error=true 按失败收尾，否则按空结果成功收尾。=====
+      const settle = function (asError, msg) {
+        if (gotResult) return
+        gotResult = true
+        const cur = activeTab(st)
+        if (!cur || !cur.running) return
+        cur.running = false
+        if (asError) {
+          gotError = true
+          cur.finish = 'error'
+          cur.errMsg = msg || cur.errMsg || '执行失败'
+          const sErrOne = String(cur.errMsg).replace(/\n+/g, ' ').trim()
+          if (cur.log.indexOf('IMPALAERROR') === -1 && cur.log.indexOf(sErrOne) === -1) {
+            cur.log = (cur.log || '') + (cur.log ? '\n' : '') + 'IMPALAERROR: [' + sErrOne + ']'
+          }
+          cur.bottomTab = 'log'
+        } else {
+          cur.finish = 'ok'
+          cur.errMsg = ''
+          cur.result = cur.result || { isReady: 'ok', list: [], columnNameList: [] }
+          cur.bottomTab = 'result'
+        }
+        bump()
+      }
+      // ===== WORKSTATION: 总超时看门狗 —— 任何轮询 RPC 异常/判定遗漏时的最后兜底，
+      // 到点仍 running 则按日志内容判定失败或空结果成功，杜绝按钮永久停在「停止」。
+      // 正常收尾后 alive()=false，看门狗触发也直接 return，无需清理。=====
+      timer.timeout(function () {
+        if (!alive()) return // 已正常收尾 / 已 kill
+        const cur = activeTab(st)
+        const logTxt = String(cur && cur.log || '')
+        // 日志或 errMsg 有错误特征（含中文：资源繁忙/超时/失败 等）→ 按失败收尾
+        const hasErr = /IMPALAERROR|Error|Exception|Analysis|failed|Failed|失败|Could not|SQLException|Invalid|unknown|繁忙|超时|拒绝|无权限|异常|无法|不能|资源|稍后/i.test(logTxt)
+          || (cur && cur.errMsg)
+        settle(hasErr, (cur && cur.errMsg) || '执行超时或失败，请重试')
+      }, 45000)
 
-      // 循环 1：getLogResult —— 只累积日志，不决定收尾
+      // 循环 1：getLogResult —— 累积日志；错误特征（后端 IMPALAERROR/中文错误）达到收尾判定由 settle 处理
       const logLoop = function () {
         if (gotResult || !alive()) return
         callHost('olap.log', { requestId: rid }).then(function (lg) {
@@ -2535,15 +2904,24 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
             const errTxt = (d.error === undefined || d.error === null) ? '' : String(d.error)
             if (txt !== '' && txt !== '0') {
               if (cur.log && txt.indexOf(cur.log) === 0) cur.log = txt
+              else if (cur.log && cur.log.indexOf(txt) !== -1) { /* 已包含，不重复追加 */ }
               else if (cur.log) cur.log = cur.log + '\n' + txt
               else cur.log = txt
             } else if (errTxt !== '' && errTxt !== '0') {
-              cur.log = (cur.log || '') + '\n' + errTxt
+              // 后端把错误放 error 字段 → 追加一次并判定失败收尾（错误日志=执行已失败）
+              if (!(cur.log || '').split('\n').some(function (l) { return l.indexOf(errTxt) !== -1 })) {
+                cur.log = (cur.log || '') + (cur.log ? '\n' : '') + errTxt
+              }
+              settle(true, errTxt)
+              return
             }
             if (d.finish === 'ok') { logFinished = true; if (!cur.log) cur.log = '执行完成' }
           }
           bump()
-        }).catch(function () {})
+        }).catch(function () {
+          // RPC 异常：不能静默死亡 —— 排下一次继续轮询（成功收尾由 state/看门狗负责）
+          if (!gotResult && alive()) timer.timeout(logLoop, 500)
+        })
         timer.timeout(logLoop, 500)
       }
 
@@ -2561,7 +2939,10 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
           }
           // 继续拉（最多 ~30s）
           if (attempt < 60) timer.timeout(function () { resLoop(attempt + 1) }, 500)
-        }).catch(function () {})
+        }).catch(function () {
+          // RPC 异常：续排（防 loop 死亡后无收尾者；看门狗做最后兜底）
+          if (attempt < 60 && !gotResult && alive()) timer.timeout(function () { resLoop(attempt + 1) }, 500)
+        })
       }
 
       logLoop()
@@ -2575,34 +2956,18 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
           if (sd) {
             const sErr = String(sd.errMsg || '')
             const sFinish = sd.finish
-            if (sErr && /Error|Exception|Analysis|failed|Failed|失败|Could not|SQLException|Invalid|unknown/i.test(sErr)) {
-              gotResult = true
-              gotError = true
-              cur.running = false
-              cur.finish = 'error'
-              cur.errMsg = sErr
-              cur.bottomTab = 'log'
-              // 原版格式：IMPALAERROR: [AnalysisException: ...]；已追加过则不重复；sErr 可能含换行 → 压成单行
-              const sErrOne = sErr.replace(/\n+/g, ' ').trim()
-              if (cur.log.indexOf('IMPALAERROR') === -1 && cur.log.indexOf(sErrOne) === -1) {
-                cur.log = (cur.log || '') + (cur.log ? '\n' : '') + 'IMPALAERROR: [' + sErrOne + ']'
-              }
-              cur.bottomTab = 'log'
-              bump()
+            // ===== WORKSTATION: 错误判定放宽 —— 原版只认英文关键词，中文错误
+            // （如「资源繁忙,等待资源较长,请稍后重试」）永不命中 → 按钮卡「停止」。
+            // 规则：英文错误特征（任意 finish，含 finish=ok 但 errMsg 异常的反常返回）
+            // 或 finish 非 ok 且 errMsg 非空（中文错误也收）→ 立即按失败收尾。=====
+            const isEngErr = /Error|Exception|Analysis|failed|Failed|Could not|SQLException|Invalid|unknown/i.test(sErr)
+            const hardErr = isEngErr || (sErr !== '' && sFinish !== 'ok')
+            if (hardErr) {
+              settle(true, sErr)
               return
             }
             if (sFinish === 'error') {
-              gotResult = true
-              gotError = true
-              cur.running = false
-              cur.finish = 'error'
-              cur.errMsg = sErr || '执行失败'
-              const sErrOne2 = String(cur.errMsg).replace(/\n+/g, ' ').trim()
-              if (cur.log.indexOf('IMPALAERROR') === -1 && cur.log.indexOf(sErrOne2) === -1) {
-                cur.log = (cur.log || '') + (cur.log ? '\n' : '') + 'IMPALAERROR: [' + sErrOne2 + ']'
-              }
-              cur.bottomTab = 'log'
-              bump()
+              settle(true, sErr || '执行失败')
               return
             }
             // ===== WORKSTATION: 成功收尾由 state 判定。errMsg 可能比 finish 晚到，
@@ -2611,33 +2976,29 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
             if (sFinish === 'ok') {
               const rd = cur.result
               if (rd && rd.list && rd.list.length) {
-                gotResult = true
-                cur.running = false
-                cur.finish = 'ok'
-                cur.errMsg = ''
-                cur.result = rd
-                cur.bottomTab = 'result'
-                bump()
+                settle(false) // rd 已在 resLoop 存入 cur.result
                 return
               }
               // list 空：继续等（等 errMsg 或兜底 0 行）
             }
           }
           if (attempt >= 80) {
-            // 兜底：长时间 finish=ok 且无错误、无数据 → 视为 0 行结果（正常空结果），切结果页
-            if (!gotError && !cur.errMsg) {
-              gotResult = true
-              cur.running = false
-              cur.finish = 'ok'
-              cur.errMsg = ''
-              cur.result = cur.result || { isReady: 'ok', list: [], columnNameList: [] }
-              cur.bottomTab = 'result'
-              bump()
-            }
+            // ===== WORKSTATION: 兜底（~40s）无条件收尾 —— 原实现 errMsg 非空时裸 return
+            // 不置 running=false，正是「按钮卡停止」的坑：errMsg 被中文错误填充但未命中
+            // 错误分支时永不复位。现在一律 settle：有 errMsg/错误日志按失败，否则 0 行成功。=====
+            if (gotError) return
+            const cur2 = activeTab(st)
+            const em = String(cur2 && cur2.errMsg || '')
+            const lgTxt = String(cur2 && cur2.log || '')
+            const errLike = em !== '' || /IMPALAERROR|Error|Exception|失败|繁忙|超时|拒绝|无权限|异常|无法|不能|资源/i.test(lgTxt)
+            settle(errLike, em || (errLike ? '执行失败' : ''))
             return
           }
           if (attempt < 80) timer.timeout(function () { stateLoop(attempt + 1) }, 500)
-        }).catch(function () {})
+        }).catch(function () {
+          // RPC 异常：续排（防 loop 死亡后无收尾者；看门狗做最后兜底）
+          if (attempt < 80 && !gotResult && alive()) timer.timeout(function () { stateLoop(attempt + 1) }, 500)
+        })
       }
       stateLoop(0)
       resLoop(0)
@@ -3169,7 +3530,14 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
             wsScheduleSave(sid, 200)
             showToast(st, '已格式化')
           } else { showToast(st, 'SQL 无需调整或暂不支持解析') }
-        }, title: '按永辉 SQL 风格格式化（关键字小写/逗号前置/字段分组）' }, '格式化'))
+        }, title: '按永辉 SQL 风格格式化（关键字小写/逗号前置/字段分组）' }, '格式化'),
+        // ===== WORKSTATION: 查找替换入口（也可 Cmd/Ctrl+F / Cmd/Ctrl+Alt+F）=====
+        h('button', { onClick: function () {
+          if (!st.findBox) st.findBox = { open: false, showRep: false, q: '', rep: '', caseS: false, word: false, re: false, pos: 0, focusTick: 0 }
+          st.findBox.open = true
+          st.findBox.focusTick = (st.findBox.focusTick || 0) + 1
+          bump()
+        }, title: '查找替换（Cmd/Ctrl+F 查找，Cmd/Ctrl+Alt+F 替换）' }, '查找'))
     }
 
     function loadHistory(st, sid, bump, force) {
@@ -3536,22 +3904,69 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
         h(TabMenu, { st: st, bump: bump, onRename: startRename, onRemove: removeTab }))
     }
 
+    // ===== WORKSTATION: 收藏目录树（仅目录，nodeType 2）路径查找，供保存弹窗树状选择 =====
+    function collectFindPath(nodes, id, chain) {
+      const list = Array.isArray(nodes) ? nodes : []
+      for (let i = 0; i < list.length; i++) {
+        const n = list[i]
+        if (!n) continue
+        const next = chain.concat([n.name || ('目录' + n.id)])
+        if (n.nodeType === 2 && String(n.id) === id) return next
+        if (n.nodeType === 2 && Array.isArray(n.subNodeListVO)) {
+          const r = collectFindPath(n.subNodeListVO, id, next)
+          if (r) return r
+        }
+      }
+      return null
+    }
+
     function CollectSaveModal(props) {
       const { st, bump } = props
-      if (!st.collectSaveFor) return null
       const tab = activeTab(st)
-      const dirs = st.collectDirs || []
-      const opts = [h('option', { value: '0', key: 'root' }, '我的收藏（根）')].concat(dirs.map(function (d, i) {
-        return h('option', { value: String(d.id), key: d.id || i }, (d.path || ('目录' + d.id)))
-      }))
+      // 展开/选中状态收敛进组件（store 只留 collectSaveFor 开关）：弹窗从关→开时重置
+      const [sel, setSel] = react.useState('0')
+      const [exp, setExp] = react.useState(null)
+      const openedRef = react.useRef(false)
+      react.useEffect(function () {
+        if (!!st.collectSaveFor && !openedRef.current) {
+          openedRef.current = true
+          // ===== WORKSTATION: 默认只展开根「我的收藏」，子目录全部折叠（点 ▸ 手动展开）=====
+          const init = { '0': true }
+          setExp(init)
+          setSel('0')
+        }
+        if (!st.collectSaveFor) openedRef.current = false
+      }, [st.collectSaveFor, st.collectTree])
+      if (!st.collectSaveFor) return null
+      const expMap = exp || {}
+      const toggle = function (id) {
+        const nx = Object.assign({}, expMap)
+        if (nx[id]) delete nx[id]
+        else nx[id] = true
+        setExp(nx)
+      }
+      // 可见目录行：根 + 各层已展开子目录（walk 只收集 nodeType 2）
+      const walk = function (list, depth) {
+        let o = []
+        ;(Array.isArray(list) ? list : []).forEach(function (n) {
+          if (!n || n.nodeType !== 2) return
+          o.push({ id: String(n.id), name: n.name || ('目录' + n.id), depth: depth, kids: (n.subNodeListVO || []).filter(function (k) { return k && k.nodeType === 2 }).length })
+          if (expMap[n.id] === true) o = o.concat(walk(n.subNodeListVO, depth + 1))
+        })
+        return o
+      }
+      const rows = (function () {
+        const rootKids = (st.collectTree || []).filter(function (n) { return n && n.nodeType === 2 }).length
+        return [{ id: '0', name: '我的收藏', depth: 0, kids: rootKids }].concat(expMap['0'] === true ? walk(st.collectTree, 1) : [])
+      })()
+      const selPath = sel === '0' ? '我的收藏（根）' : (function () { const p = collectFindPath(st.collectTree, sel, []); return p ? p.join(' / ') : '我的收藏（根）' })()
       const save = function () {
         const name = document.querySelector('.yh-olap-coladd input[data-k="n"]')
-        const pid = document.querySelector('.yh-olap-coladd select[data-k="p"]')
         const n = (name && name.value || '').trim()
         if (!n) { showToast(st, '请输入收藏名称'); return }
         const sql = (tab && tab.sql) || ''
         if (!sql.trim()) { showToast(st, '当前无 SQL 可保存'); return }
-        const pv = (pid && pid.value) || '0'
+        const pv = sel || '0'
         callHost('olap.collect.create', { node: { nodeType: 1, name: n, pid: Number(pv), querySql: sql } }).then(function (r) {
           if (r && r.ok) { st.collectSaveFor = false; st.collectSaveName = ''; if (name) name.value = ''; bump(); showToast(st, '已保存到收藏') }
           else showToast(st, '保存失败: ' + ((r && r.error) || '未知'))
@@ -3561,7 +3976,17 @@ html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(
         h('div', { className: 'yh-olap-modal yh-olap-coladd', onClick: function (e) { e.stopPropagation() } },
           h('h4', null, '保存到收藏'),
           h('input', { placeholder: '收藏名称', 'data-k': 'n', defaultValue: st.collectSaveName || (tab ? tab.name : '') }),
-          h('select', { 'data-k': 'p', defaultValue: '0' }, opts),
+          h('div', { className: 'yh-olap-dirlabel' }, '保存到目录：'),
+          h('div', { className: 'yh-olap-dirs' },
+            rows.length ? rows.map(function (row) {
+              const expanded = !!expMap[row.id]
+              const isSel = sel === row.id
+              return h('div', { key: row.id, className: 'yh-olap-dirrow' + (isSel ? ' sel' : ''), style: { paddingLeft: 6 + row.depth * 15 }, onClick: function () { setSel(row.id) }, title: row.name },
+                h('span', { className: 'tw', onClick: function (e) { e.stopPropagation(); if (row.id === '0' || row.kids > 0) toggle(row.id) } }, row.kids > 0 || row.id === '0' ? (expanded ? '▾' : '▸') : ''),
+                h('span', { className: 'nm' }, row.name),
+                isSel ? h('span', { className: 'ck' }, '✓') : null)
+            }) : h('div', { className: 'yh-olap-hint' }, '目录加载中…')),
+          h('div', { className: 'yh-olap-dirpath', title: selPath }, selPath),
           h('div', { className: 'row', style: { marginTop: 8 } },
             h('button', { className: 'pri', onClick: save }, '保存'),
             h('button', { onClick: function () { st.collectSaveFor = false; bump() } }, '取消'))))
