@@ -407,6 +407,8 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         activeTab: 1,
         datasources: [], schemas: {}, tables: {}, columns: {}, expanded: {},
         collectTree: [], collectDirs: [], collectExpanded: {}, collectMenu: null,
+        // ===== WORKSTATION: 库表清单右键菜单（复制库名/表名/字段名）=====
+        schemaMenu: null,
         leftTab: 'schema', leftCollapsed: false, leftWidth: 210, editorRatio: 0.62, bottomTab: 'result',
         __wsKnownFiles: new Set(),
         historyRows: [], historyLoaded: false,
@@ -1284,6 +1286,40 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         }))
     }
 
+    // ===== WORKSTATION: 库表清单右键菜单 —— 复制库名/表名/字段名 =====
+    function SchemaMenu(props) {
+      const { st, bump } = props
+      const m = st.schemaMenu
+      if (!m) return null
+      const items = []
+      const act = function (fn) { st.schemaMenu = null; bump(); fn() }
+      const copyItem = function (label, text) {
+        return { label: label, fn: function () {
+          if (copyToClipboard(text)) showToast(st, '已复制 ' + text)
+          else showToast(st, '复制失败')
+        } }
+      }
+      if (m.schema) items.push(copyItem('复制库名', m.schema))
+      if (m.table) items.push(copyItem('复制表名', m.table))
+      if (m.field) items.push(copyItem('复制字段名', m.field))
+      if (!items.length) return null
+      const px = Math.min(m.x, window.innerWidth - 150)
+      const py = Math.min(m.y, window.innerHeight - items.length * 30 - 10)
+      // 菜单打开时监听 document 点击：点到菜单外即关闭
+      react.useEffect(function () {
+        const onDoc = function (e) {
+          const el = document.querySelector('.yh-olap-cmenu')
+          if (el && !el.contains(e.target)) { st.schemaMenu = null; bump() }
+        }
+        document.addEventListener('mousedown', onDoc)
+        return function () { document.removeEventListener('mousedown', onDoc) }
+      }, [st.schemaMenu])
+      return h('div', { className: 'yh-olap-cmenu', style: { left: px, top: py }, onMouseDown: function (e) { e.stopPropagation() }, onContextMenu: function (e) { e.preventDefault(); e.stopPropagation() } },
+        items.map(function (it) {
+          return h('div', { key: it.label, className: 'yh-olap-citem', onClick: function () { act(it.fn) } }, it.label)
+        }))
+    }
+
     function nodeRow(label, color, depth, hasKids, open, onClick, extra, tip, icon) {
       return h('div', { className: 'yh-olap-node', title: tip !== undefined ? tip : label, style: { paddingLeft: 6 + depth * 12 }, onClick: onClick },
         h('span', { className: 'tw' }, hasKids ? (open ? '▾' : '▸') : ''),
@@ -1301,27 +1337,33 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       schemas.forEach(function (s) {
         const eKey = 's' + s.id
         const open = !!st.expanded[eKey]
-        rows.push(nodeRow(s.name, 'var(--dsw-alias-label-primary,#e8eef5)', 0, true, open, function () {
-          if (open) delete st.expanded[eKey]
-          else { st.expanded[eKey] = true; loadTables(st, sid, tab.dsId, tab.engine, s.id, bump) }
-          bump()
-        }))
+        // ===== WORKSTATION: 右键库 → 复制库名 =====
+        rows.push(h('div', { onContextMenu: function (e) { e.preventDefault(); e.stopPropagation(); st.schemaMenu = { kind: 'schema', schema: s.name, x: e.clientX, y: e.clientY }; bump() } },
+          nodeRow(s.name, 'var(--dsw-alias-label-primary,#e8eef5)', 0, true, open, function () {
+            if (open) delete st.expanded[eKey]
+            else { st.expanded[eKey] = true; loadTables(st, sid, tab.dsId, tab.engine, s.id, bump) }
+            bump()
+          })))
         if (open) {
           const tbls = st.tables[dsKey + '/' + s.id]
           if (tbls && tbls.list) {
             tbls.list.forEach(function (t) {
               const tKey = 't' + t.tableId
               const to = !!st.expanded[tKey]
-              rows.push(nodeRow(t.name, 'var(--dsw-alias-label-primary,#e8eef5)', 1, true, to, function () {
-                if (to) delete st.expanded[tKey]
-                else { st.expanded[tKey] = true; loadColumns(st, sid, tab.engine, s.id, t.tableId, bump) }
-                bump()
-              }))
+              // ===== WORKSTATION: 右键表 → 复制库名/表名 =====
+              rows.push(h('div', { onContextMenu: function (e) { e.preventDefault(); e.stopPropagation(); st.schemaMenu = { kind: 'table', schema: s.name, table: t.name, x: e.clientX, y: e.clientY }; bump() } },
+                nodeRow(t.name, 'var(--dsw-alias-label-primary,#e8eef5)', 1, true, to, function () {
+                  if (to) delete st.expanded[tKey]
+                  else { st.expanded[tKey] = true; loadColumns(st, sid, tab.engine, s.id, t.tableId, bump) }
+                  bump()
+                })))
               if (to) {
                 const cs = st.columns[s.id + '/' + t.tableId]
                 if (cs && cs.columns) cs.columns.forEach(function (c) {
                   const cm = c.cnName || c.comment || ''
-                  rows.push(h('div', { className: 'yh-olap-node yh-olap-field', title: cm ? (c.name + (c.cnName ? '  ' + c.cnName : '') + (c.comment && c.comment !== c.cnName ? '  ' + c.comment : '')) : c.name, style: { paddingLeft: 6 + 2 * 12 } },
+                  rows.push(h('div', { className: 'yh-olap-node yh-olap-field', title: cm ? (c.name + (c.cnName ? '  ' + c.cnName : '') + (c.comment && c.comment !== c.cnName ? '  ' + c.comment : '')) : c.name, style: { paddingLeft: 6 + 2 * 12 },
+                    // ===== WORKSTATION: 右键字段 → 复制库名/表名/字段名 =====
+                    onContextMenu: function (e) { e.preventDefault(); e.stopPropagation(); st.schemaMenu = { kind: 'field', schema: s.name, table: t.name, field: c.name, x: e.clientX, y: e.clientY }; bump() } },
                     h('span', { className: 'tw' }, ''),
                     h('span', { className: 'yh-olap-fname' }, c.name),
                     c.type ? h('span', { className: 'yh-olap-ftype' }, c.type) : null,
@@ -2838,131 +2880,163 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
           tab.running = false; tab.finish = 'error'; tab.errMsg = (r && r.error) || '提交失败'; tab.log = tab.errMsg
           bump(); return
         }
-        tab.executeId = r.data && r.data.executeId
-        pollRun(st, sid, bump)
+        const eid = r.data && r.data.executeId
+        if (!eid) {
+          // ===== WORKSTATION: 提交响应缺 executeId 也必须失败收尾（否则 running 永真 → 按钮卡「停止」）=====
+          tab.running = false; tab.finish = 'error'; tab.errMsg = '提交响应缺少 executeId'; tab.log = tab.errMsg
+          bump(); return
+        }
+        tab.executeId = eid
+        pollRun(st, sid, bump, tab)
       })
     }
 
-    function pollRun(st, sid, bump) {
-      const tab = activeTab(st)
+    // ===== WORKSTATION: 执行状态/结果轮询。=====
+    // 本轮重构（2026-09-07，CDP 实测复现并修复「有结果但按钮卡停止」）：
+    // ① runTab 绑定：原实现对每个循环/看门狗实时取 activeTab(st)，用户中途切到其他标签
+    //    → alive()=false → 三个循环全部退出、看门狗也放弃 → 该运行永久卡在「停止」
+    //    （实测：切走 45s+ 再切回，按钮永不复位，即使查询已出结果）。现在把运行绑定
+    //    到发起时的 tab 对象，切标签不再影响轮询收尾。
+    // ② 成功 = checkState finish==='ok'（后端完成信号，errMsg='请查看结果'）：原实现
+    //    要求 result.list.length>0 才收尾，0 行结果永远走不到成功分支，只能等 40s 兜底
+    //    （RPC 慢时远不止 40s）。0 行也是成功，收尾即切结果页。
+    // ③ 看门狗改停滞检测：原实现在 45s 固定强杀，且日志关键词含「稍后」——实测日志
+    //    「sql执行中,请稍后....」命中 → 仍在执行/慢但成功的查询被误标「执行超时或失败」。
+    //    现在任一轮询 RPC 成功即续命，只有全部循环持续 >20s 无成功响应（RPC 全挂）
+    //    才先做最终 checkState 再判定。长查询不再被误杀。
+    // ④ 结果补拉：settle 成功但结果仍在物化（isReady='run'）→ fillResult 继续拉，
+    //    就绪后补进结果页（原实现 resLoop 只拉 30s 就死，晚到的结果被吞成 0 行）。
+    function pollRun(st, sid, bump, runTab) {
+      const tab = runTab || activeTab(st)
       const rid = tab.executeId
       if (!rid) return
-      const alive = function () { return activeTab(st).running && activeTab(st).executeId === rid }
-      // 原版 OLAP 流程（实测）：runSql 后每 0.5s 并行轮询 getLogResult + getSqlResult。
-      // getLogResult 累积日志（finish=ok 只提示运行完）；getSqlResult 拉到 list 非空 / isReady=ok 才算收尾。
-      // 不用 checkState。以「拿到结果」为准收尾 —— log 先完成绝不能把 result 循环挡掉（竞态）。
+      const alive = function () {
+        return tab && tab.running && tab.executeId === rid && st.tabs.indexOf(tab) !== -1
+      }
       let gotResult = false
       let gotError = false
-      let logFinished = false
-      // ===== WORKSTATION: 轮询统一收尾函数 —— 无论哪条路径判定失败/成功都走这里，
-      // 保证 running 一定复位（执行按钮不会卡在「停止」）。error=true 按失败收尾，否则按空结果成功收尾。=====
+      let gotRealResult = false // 是否已拿到真实 result 响应（区别于 settle 的空默认值）
+      let sawOkAt = 0           // checkState 首次 finish='ok' 的时刻
+      let lastTick = Date.now() // 任一循环最近一次成功 RPC 的时刻（看门狗停滞判定）
+      // 结果补拉：settle 成功后结果晚到（物化慢）时把 rows 补进结果页
+      const fillResult = function (attempt) {
+        if (tab.executeId !== rid) return
+        callHost('olap.result', { requestId: rid, pageNo: 1, pageSize: 200 }).then(function (rr) {
+          if (tab.executeId !== rid) return
+          const rd = rr && rr.ok ? rr.data : null
+          if (rd && rd.isReady === 'ok') {
+            if (tab.result !== rd) { tab.result = rd; bump() }
+            return
+          }
+          if (attempt < 120) timer.timeout(function () { fillResult(attempt + 1) }, 1000)
+        }).catch(function () {
+          if (attempt < 120) timer.timeout(function () { fillResult(attempt + 1) }, 1000)
+        })
+      }
+      // 统一收尾：无论哪条路径判定失败/成功都走这里，保证 running 一定复位。
       const settle = function (asError, msg) {
         if (gotResult) return
         gotResult = true
-        const cur = activeTab(st)
-        if (!cur || !cur.running) return
-        cur.running = false
+        if (!alive()) return
         if (asError) {
           gotError = true
-          cur.finish = 'error'
-          cur.errMsg = msg || cur.errMsg || '执行失败'
-          const sErrOne = String(cur.errMsg).replace(/\n+/g, ' ').trim()
-          if (cur.log.indexOf('IMPALAERROR') === -1 && cur.log.indexOf(sErrOne) === -1) {
-            cur.log = (cur.log || '') + (cur.log ? '\n' : '') + 'IMPALAERROR: [' + sErrOne + ']'
+          tab.finish = 'error'
+          tab.errMsg = msg || tab.errMsg || '执行失败'
+          const sErrOne = String(tab.errMsg).replace(/\n+/g, ' ').trim()
+          if (tab.log.indexOf('IMPALAERROR') === -1 && tab.log.indexOf(sErrOne) === -1) {
+            tab.log = (tab.log || '') + (tab.log ? '\n' : '') + 'IMPALAERROR: [' + sErrOne + ']'
           }
-          cur.bottomTab = 'log'
+          tab.bottomTab = 'log'
         } else {
-          cur.finish = 'ok'
-          cur.errMsg = ''
-          cur.result = cur.result || { isReady: 'ok', list: [], columnNameList: [] }
-          cur.bottomTab = 'result'
+          tab.finish = 'ok'
+          tab.errMsg = ''
+          tab.result = tab.result || { isReady: 'ok', list: [], columnNameList: [] }
+          tab.bottomTab = 'result'
+          if (!gotRealResult || !tab.result.isReady || tab.result.isReady !== 'ok') fillResult(0)
         }
+        tab.running = false
         bump()
       }
-      // ===== WORKSTATION: 总超时看门狗 —— 任何轮询 RPC 异常/判定遗漏时的最后兜底，
-      // 到点仍 running 则按日志内容判定失败或空结果成功，杜绝按钮永久停在「停止」。
-      // 正常收尾后 alive()=false，看门狗触发也直接 return，无需清理。=====
-      timer.timeout(function () {
-        if (!alive()) return // 已正常收尾 / 已 kill
-        const cur = activeTab(st)
-        const logTxt = String(cur && cur.log || '')
-        // 日志或 errMsg 有错误特征（含中文：资源繁忙/超时/失败 等）→ 按失败收尾
-        const hasErr = /IMPALAERROR|Error|Exception|Analysis|failed|Failed|失败|Could not|SQLException|Invalid|unknown|繁忙|超时|拒绝|无权限|异常|无法|不能|资源|稍后/i.test(logTxt)
-          || (cur && cur.errMsg)
-        settle(hasErr, (cur && cur.errMsg) || '执行超时或失败，请重试')
-      }, 45000)
+      // 看门狗（停滞检测）：循环健康时不断续命；只有所有循环持续停滞（RPC 全挂）才
+      // 做最终 checkState 并按结果收尾，杜绝按钮永久停在「停止」，也不误杀长查询。
+      const watchdog = function () {
+        if (!alive()) return
+        if (Date.now() - lastTick <= 20000) { timer.timeout(watchdog, 30000); return }
+        callHost('olap.state', { requestId: rid }).then(function (sr) {
+          if (!alive()) return
+          const sd = sr && sr.ok ? sr.data : null
+          if (sd && sd.finish === 'ok') { settle(false); return }
+          if (sd && sd.finish === 'error') { settle(true, String(sd.errMsg || '')); return }
+          if (sd) { lastTick = Date.now(); timer.timeout(watchdog, 30000); return } // 还在执行 → 续命
+          settle(true, '状态轮询中断，请重试')
+        }).catch(function () {
+          settle(true, '状态轮询中断，请重试')
+        })
+      }
+      timer.timeout(watchdog, 45000)
 
-      // 循环 1：getLogResult —— 累积日志；错误特征（后端 IMPALAERROR/中文错误）达到收尾判定由 settle 处理
+      // 循环 1：getLogResult —— 累积日志；error 字段非空（非 '0'）即失败收尾
       const logLoop = function () {
         if (gotResult || !alive()) return
         callHost('olap.log', { requestId: rid }).then(function (lg) {
           if (gotResult || !alive()) return
-          const cur = activeTab(st)
+          lastTick = Date.now()
           if (lg && lg.ok && lg.data) {
             const d = lg.data
             const txt = (d.data === undefined || d.data === null) ? '' : String(d.data)
             const errTxt = (d.error === undefined || d.error === null) ? '' : String(d.error)
             if (txt !== '' && txt !== '0') {
-              if (cur.log && txt.indexOf(cur.log) === 0) cur.log = txt
-              else if (cur.log && cur.log.indexOf(txt) !== -1) { /* 已包含，不重复追加 */ }
-              else if (cur.log) cur.log = cur.log + '\n' + txt
-              else cur.log = txt
+              if (tab.log && txt.indexOf(tab.log) === 0) tab.log = txt
+              else if (tab.log && tab.log.indexOf(txt) !== -1) { /* 已包含，不重复追加 */ }
+              else if (tab.log) tab.log = tab.log + '\n' + txt
+              else tab.log = txt
             } else if (errTxt !== '' && errTxt !== '0') {
               // 后端把错误放 error 字段 → 追加一次并判定失败收尾（错误日志=执行已失败）
-              if (!(cur.log || '').split('\n').some(function (l) { return l.indexOf(errTxt) !== -1 })) {
-                cur.log = (cur.log || '') + (cur.log ? '\n' : '') + errTxt
+              if (!(tab.log || '').split('\n').some(function (l) { return l.indexOf(errTxt) !== -1 })) {
+                tab.log = (tab.log || '') + (tab.log ? '\n' : '') + errTxt
               }
               settle(true, errTxt)
               return
             }
-            if (d.finish === 'ok') { logFinished = true; if (!cur.log) cur.log = '执行完成' }
           }
           bump()
+          timer.timeout(logLoop, 500)
         }).catch(function () {
-          // RPC 异常：不能静默死亡 —— 排下一次继续轮询（成功收尾由 state/看门狗负责）
+          // RPC 异常：续排一次（不能静默死亡；收尾由 stateLoop/看门狗兜底）
           if (!gotResult && alive()) timer.timeout(logLoop, 500)
         })
-        timer.timeout(logLoop, 500)
       }
 
-      // 循环 2：getSqlResult —— 只拉结果数据（成功/失败收尾统一由 stateLoop 判定，避免竞态）
-      const resLoop = function (attempt) {
+      // 循环 2：getSqlResult —— 拉到 isReady='ok' 或行数据即存入（成功/失败收尾归 stateLoop）
+      const resLoop = function () {
         if (gotResult || !alive()) return
         callHost('olap.result', { requestId: rid, pageNo: 1, pageSize: 200 }).then(function (rr) {
           if (gotResult || !alive()) return
-          const cur = activeTab(st)
+          lastTick = Date.now()
           const rd = rr && rr.ok ? rr.data : null
-          // 拉到结果行就先存起来（不切 tab，等 stateLoop 确认 finish 后再收尾）
           if (rd && (rd.isReady === 'ok' || (rd.list && rd.list.length))) {
-            cur.result = rd
+            gotRealResult = true
+            tab.result = rd
             bump()
           }
-          // 继续拉（最多 ~30s）
-          if (attempt < 60) timer.timeout(function () { resLoop(attempt + 1) }, 500)
+          if (!gotResult && alive()) timer.timeout(resLoop, 500)
         }).catch(function () {
-          // RPC 异常：续排（防 loop 死亡后无收尾者；看门狗做最后兜底）
-          if (attempt < 60 && !gotResult && alive()) timer.timeout(function () { resLoop(attempt + 1) }, 500)
+          if (!gotResult && alive()) timer.timeout(resLoop, 500)
         })
       }
 
-      logLoop()
-      // ===== WORKSTATION: 状态轮询 —— checkState 的错误（AnalysisException 等）不在 log/result 流里，只能从 state 拿 =====
-      const stateLoop = function (attempt) {
+      // 循环 3：checkState —— 完成/错误的权威信号；成功收尾带 ≤10s 结果物化宽限
+      const stateLoop = function () {
         if (gotResult || !alive()) return
         callHost('olap.state', { requestId: rid }).then(function (sr) {
           if (gotResult || !alive()) return
-          const cur = activeTab(st)
+          lastTick = Date.now()
           const sd = sr && sr.ok ? sr.data : null
           if (sd) {
             const sErr = String(sd.errMsg || '')
             const sFinish = sd.finish
-            // ===== WORKSTATION: 错误判定放宽 —— 原版只认英文关键词，中文错误
-            // （如「资源繁忙,等待资源较长,请稍后重试」）永不命中 → 按钮卡「停止」。
-            // 规则：英文错误特征（任意 finish，含 finish=ok 但 errMsg 异常的反常返回）
-            // 或 finish 非 ok 且 errMsg 非空（中文错误也收）→ 立即按失败收尾。=====
-            const isEngErr = /Error|Exception|Analysis|failed|Failed|Could not|SQLException|Invalid|unknown/i.test(sErr)
-            const hardErr = isEngErr || (sErr !== '' && sFinish !== 'ok')
-            if (hardErr) {
+            // 英文错误特征（任意 finish，含 finish=ok 但 errMsg 异常的反常返回）→ 失败
+            if (/Error|Exception|Analysis|failed|Failed|Could not|SQLException|Invalid|unknown/i.test(sErr)) {
               settle(true, sErr)
               return
             }
@@ -2970,38 +3044,24 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
               settle(true, sErr || '执行失败')
               return
             }
-            // ===== WORKSTATION: 成功收尾由 state 判定。errMsg 可能比 finish 晚到，
-            // 故 list 有数据才视为成功切结果；list 空（0 行或错误未暴露）继续等，
-            // 错误 errMsg 会在后续轮询被上方分支捕获。=====
             if (sFinish === 'ok') {
-              const rd = cur.result
-              if (rd && rd.list && rd.list.length) {
-                settle(false) // rd 已在 resLoop 存入 cur.result
-                return
-              }
-              // list 空：继续等（等 errMsg 或兜底 0 行）
+              // 后端完成信号：0 行也是成功。结果已就绪立即收尾；仍在物化则最多等 10s，
+              // 到点按成功收尾（结果由 fillResult 补拉，晚到也会补进结果页）。
+              if (!sawOkAt) sawOkAt = Date.now()
+              const rd = tab.result
+              if (gotRealResult && rd && rd.isReady === 'ok') { settle(false); return }
+              if (Date.now() - sawOkAt > 10000) { settle(false); return }
             }
           }
-          if (attempt >= 80) {
-            // ===== WORKSTATION: 兜底（~40s）无条件收尾 —— 原实现 errMsg 非空时裸 return
-            // 不置 running=false，正是「按钮卡停止」的坑：errMsg 被中文错误填充但未命中
-            // 错误分支时永不复位。现在一律 settle：有 errMsg/错误日志按失败，否则 0 行成功。=====
-            if (gotError) return
-            const cur2 = activeTab(st)
-            const em = String(cur2 && cur2.errMsg || '')
-            const lgTxt = String(cur2 && cur2.log || '')
-            const errLike = em !== '' || /IMPALAERROR|Error|Exception|失败|繁忙|超时|拒绝|无权限|异常|无法|不能|资源/i.test(lgTxt)
-            settle(errLike, em || (errLike ? '执行失败' : ''))
-            return
-          }
-          if (attempt < 80) timer.timeout(function () { stateLoop(attempt + 1) }, 500)
+          timer.timeout(stateLoop, 500)
         }).catch(function () {
-          // RPC 异常：续排（防 loop 死亡后无收尾者；看门狗做最后兜底）
-          if (attempt < 80 && !gotResult && alive()) timer.timeout(function () { stateLoop(attempt + 1) }, 500)
+          if (!gotResult && alive()) timer.timeout(stateLoop, 500)
         })
       }
-      stateLoop(0)
-      resLoop(0)
+
+      logLoop()
+      resLoop()
+      stateLoop()
     }
 
     function killRun(st, sid, bump) {
@@ -4253,6 +4313,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         h(DownloadDetailModal, { st: st, bump: bump }),
         h(DlgModal, { st: st, bump: bump }),
         h(CollectMenu, { st: st, sid: sid, bump: bump }),
+        h(SchemaMenu, { st: st, bump: bump }),
         st.toast ? h('div', { className: 'yh-olap-toast' }, st.toast) : null)
     }
 
