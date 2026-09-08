@@ -133,7 +133,7 @@ html[style*="color-scheme: dark"]{--yh-k:#c586c0;--yh-f:#4ec9b0;--yh-s:#e6a86e;-
 :root{--yh-ui-brand:#4176e6;--yh-ui-brand-weak:rgba(65,118,230,.1);--yh-ui-danger:#e5484d;--yh-ui-danger-weak:rgba(229,72,77,.1);--yh-ui-ondark:#fff}
 html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(77,140,255,.14);--yh-ui-danger:#ff6b6b;--yh-ui-danger-weak:rgba(255,107,107,.12);--yh-ui-ondark:#fff}
 .yh-olap-hl{position:absolute;inset:0;margin:0;padding:0;white-space:pre;overflow:hidden;pointer-events:none;color:var(--dsw-alias-label-primary,#d7dee6);font:13px/1.55 ui-monospace,Menlo,Consolas,monospace;box-sizing:border-box;letter-spacing:normal;word-spacing:0}
-.yh-olap-hl-inner{padding:10px 12px;will-change:transform;display:block;position:relative;z-index:0;box-sizing:border-box;white-space:pre-wrap;word-break:normal;line-height:1.55}
+.yh-olap-hl-inner{padding:10px 12px;will-change:transform;display:block;position:relative;z-index:0;box-sizing:border-box;white-space:pre-wrap;word-break:normal;overflow-wrap:break-word;line-height:1.55}
 .yh-olap-curline{position:absolute;left:-12px;right:-12px;height:20.15px;background:rgba(148,163,184,.13);pointer-events:none;z-index:-1;border-radius:2px}
 .yh-olap-input{position:absolute;inset:0;margin:0;padding:10px 12px;background:transparent;color:transparent;caret-color:var(--dsw-alias-label-primary,#fff);border:0;outline:none;resize:none;white-space:pre-wrap;overflow-x:hidden;overflow-y:overlay;font:13px/1.55 ui-monospace,Menlo,Consolas,monospace;box-sizing:border-box;letter-spacing:normal;word-spacing:0;word-break:normal;overflow-wrap:break-word;line-height:1.55}
 .yh-olap-input::-webkit-scrollbar,.yh-olap-input::-webkit-scrollbar-track,.yh-olap-input::-webkit-scrollbar-thumb,.yh-olap-input::-webkit-scrollbar-corner{cursor:default}
@@ -667,6 +667,49 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       }
       flush()
       return rects
+    }
+
+    // ===== WORKSTATION: 实测文本矩形 —— 用 Range.getClientRects 按浏览器真实断行/字宽测量，
+    // 取代按字符宽估算（CJK 字宽并非精确 2×ASCII、pre-wrap 断点规则复杂，估算必然漂移；
+    // CDP 实测：6 个中文字符后即偏 16px，长行软换行直接错行）。inner 为 .yh-olap-hl-inner，
+    // 返回 [{left,top,width,height,cur}]（hl-inner 内容坐标，随 transform 滚动自动跟随）。=====
+    function measureRectsIn(inner, matches, curIdx) {
+      const spans = []
+      let off = 0
+      const walker = document.createTreeWalker(inner, NodeFilter.SHOW_TEXT, null)
+      while (walker.nextNode()) {
+        const n = walker.currentNode
+        const pc = n.parentNode
+        // 跳过覆盖层自身（findhit/curline/mcur 均为空节点，防御性跳过）
+        if (pc && pc.classList && (pc.classList.contains('yh-olap-findhit') || pc.classList.contains('yh-olap-curline') || pc.classList.contains('yh-olap-mcur'))) continue
+        spans.push({ node: n, start: off })
+        off += n.textContent.length
+      }
+      if (!spans.length) return null
+      const iRect = inner.getBoundingClientRect()
+      const out = []
+      matches.forEach(function (m, mi) {
+        const s = m.start, e = m.end
+        let a = null, b = null
+        for (let k = 0; k < spans.length; k++) {
+          const t = spans[k]
+          const tEnd = t.start + t.node.textContent.length
+          if (a === null && s >= t.start && s < tEnd) a = t
+          if (b === null && e > t.start && e <= tEnd) b = t
+          if (a && b) break
+        }
+        if (!a || !b) return
+        const r = document.createRange()
+        r.setStart(a.node, s - a.start)
+        r.setEnd(b.node, e - b.start)
+        const rc = r.getClientRects()
+        for (let i = 0; i < rc.length; i++) {
+          const q = rc[i]
+          out.push({ left: q.left - iRect.left, top: q.top - iRect.top, width: q.width, height: q.height, cur: mi === curIdx })
+        }
+        r.detach()
+      })
+      return out
     }
 
     // —— 轻量多光标（Cmd/Ctrl+点击 添加光标，输入/退格/回车/粘贴同步到所有光标）——
@@ -2106,6 +2149,10 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       }
       // ===== WORKSTATION: 编辑器右键菜单（选中 SQL 片段 → 引用到聊天框）=====
       const [selMenu, setSelMenu] = react.useState(null) // { x, y, selStart, selEnd }
+      // ===== WORKSTATION: 查找高亮实测定位 —— 渲染后由 useLayoutEffect 按 DOM Range 实测，
+      // 存这里驱动高亮 div（取代按字符宽估算的 matchRects，CJK/软换行精确对齐）=====
+      const [findRects, setFindRects] = react.useState(null)
+      const [resizeTick, setResizeTick] = react.useState(0)
       // ===== WORKSTATION: 查找替换按钮悬停提示（原生 title 延迟久且样式不统一，自绘即时气泡）=====
       const [tip, setTip] = react.useState(null) // { x, y, text }（fixed 坐标）
       const tipOn = function (e, text) {
@@ -2185,11 +2232,12 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         syncHl()
       })
 
-      // ===== WORKSTATION: 监听 textarea 尺寸变化（滚动条出现/消失 → 内容宽跳变）即时对齐 hl 宽度 =====
+      // ===== WORKSTATION: 监听 textarea 尺寸变化（滚动条出现/消失 → 内容宽跳变）即时对齐 hl 宽度，
+      // 并触发查找高亮重测（宽度变化 → 换行点变化 → 高亮矩形需重算）=====
       react.useEffect(function () {
         const ta = taRef.current
         if (!ta || typeof ResizeObserver === 'undefined') return
-        const ro = new ResizeObserver(function () { syncHl() })
+        const ro = new ResizeObserver(function () { syncHl(); setResizeTick(function (t) { return t + 1 }) })
         ro.observe(ta)
         return function () { try { ro.disconnect() } catch (e) { /* ignore */ } }
       }, [])
@@ -2645,11 +2693,20 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         return { matches: res, cur: cur, error: false }
       })()
       // 把字符位置滚动到编辑器可视区（垂直；textarea 无横向滚动）
+      // ===== WORKSTATION: 优先用实测矩形定位（CJK/软换行精确），实测不到再回退 cursorXY 估算 =====
       const scrollPosIntoView = function (text, pos) {
         const ta = taRef.current
         if (!ta) return
-        const xy = cursorXY(text, pos, usableWidthOf(ta))
-        const top = xy.y - 3
+        let top = null
+        const inner = hlInnerRef.current
+        if (inner && findData && findData.matches.length) {
+          const m = findData.matches.find(function (mm) { return pos >= mm.start && pos < mm.end })
+          if (m) {
+            const rs = measureRectsIn(inner, [m], -1)
+            if (rs && rs.length) top = rs[0].top
+          }
+        }
+        if (top === null) { const xy = cursorXY(text, pos, usableWidthOf(ta)); top = xy.y - 3 }
         if (top < ta.scrollTop + 10) ta.scrollTop = Math.max(0, top - ED_LINE_H - 10)
         else if (top + ED_LINE_H > ta.scrollTop + ta.clientHeight - 10) ta.scrollTop = top + ED_LINE_H + 10 - ta.clientHeight
         syncHl()
@@ -2764,18 +2821,33 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         if (e.key === 'Enter') { e.preventDefault(); if (modKeyOf(e)) replaceAllMatches(); else replaceCurrent(); return }
         if (e.key === 'Escape') { e.preventDefault(); closeFind() }
       }
-      // 匹配高亮矩形（hl-inner 内 z-index:-1 叠文字下；上限 500 个防大 SQL 卡顿）
-      const findHits = (findData && findData.matches.length && sql) ? (function () {
-        const uw = usableWidthOf(taRef.current)
-        const out = []
+      // ===== WORKSTATION: 匹配高亮矩形直接由 findRects（useLayoutEffect 实测）驱动渲染，
+      // 见下方 JSX（hl-inner 内 z-index:-1 叠文字下；上限 500 个防大 SQL 卡顿）=====
+      const findCountText = findData ? (fb.q ? (findData.error ? '无效正则' : (findData.matches.length ? (findData.cur + 1) + '/' + findData.matches.length : '无结果')) : '') : ''
+
+      // ===== WORKSTATION: 查找高亮实测定位 —— 渲染后按浏览器真实布局测量匹配矩形。
+      // deps 覆盖：查询词/开关变化、SQL 变化、输入框打开、宽度变化（resizeTick）。
+      // 测量后 setState 触发一次重渲染；deps 不变 → 该 effect 不会重入（无死循环）。
+      // 实测失败（DOM 异常/空文本）→ 回退按字符宽估算（matchRects），保证高亮不消失。=====
+      react.useLayoutEffect(function () {
+        const ta = taRef.current
+        const inner = hlInnerRef.current
+        if (ta) {
+          const tw = ta.clientWidth
+          if (tw && inner) inner.style.width = tw + 'px' // 与 syncHl 同步宽度，确保按当前换行宽测量
+        }
+        if (!fb.open || !findData || !findData.matches.length || !inner || !sql) { setFindRects(null); return }
         const list = findData.matches.slice(0, 500)
+        const rects = measureRectsIn(inner, list, findData.cur)
+        if (rects && rects.length) { setFindRects(rects); return }
+        const uw = usableWidthOf(ta)
+        const out = []
         for (let i = 0; i < list.length; i++) {
           const rs = matchRects(sql, list[i].start, list[i].end, uw)
-          for (let j = 0; j < rs.length; j++) out.push({ r: rs[j], cur: i === findData.cur })
+          for (let j = 0; j < rs.length; j++) out.push({ left: rs[j].left, top: rs[j].top, width: rs[j].width, height: rs[j].height, cur: i === findData.cur })
         }
-        return out
-      })() : null
-      const findCountText = findData ? (fb.q ? (findData.error ? '无效正则' : (findData.matches.length ? (findData.cur + 1) + '/' + findData.matches.length : '无结果')) : '') : ''
+        setFindRects(out.length ? out : null)
+      }, [fb.open, fb.q, fb.caseS, fb.word, fb.re, fb.pos, sql, resizeTick])
 
       // ===== WORKSTATION: 当前光标所在物理行浅灰背景 top（软换行折行后高亮光标所在的那段）=====
       const curTop = sql ? (function () {
@@ -2795,8 +2867,8 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
           h('pre', { className: 'yh-olap-hl', ref: hlRef, 'aria-hidden': 'true' },
             h('div', { className: 'yh-olap-hl-inner', ref: hlInnerRef },
               curTop !== 0 ? h('div', { className: 'yh-olap-curline', style: { top: curTop + 'px' } }) : null,
-              findHits ? findHits.map(function (x, i) {
-                return h('div', { key: 'fh' + i, className: 'yh-olap-findhit' + (x.cur ? ' cur' : ''), style: { left: x.r.left + 'px', top: x.r.top + 'px', width: x.r.width + 'px', height: x.r.height + 'px' } })
+              (findRects && findRects.length) ? findRects.map(function (x, i) {
+                return h('div', { key: 'fh' + i, className: 'yh-olap-findhit' + (x.cur ? ' cur' : ''), style: { left: x.left + 'px', top: x.top + 'px', width: x.width + 'px', height: x.height + 'px' } })
               }) : null,
               highlight(sql, tab && tab.engine), ...mcurMarkers)),
           h('textarea', { className: 'yh-olap-input', ref: taRef, value: sql, spellCheck: false, wrap: 'soft', onScroll: onScroll, onKeyDown: onKeyDown, onBeforeInput: onBeforeInput, onInput: onInput, onMouseDown: onMouseDown, onDoubleClick: onDblClickParen, onKeyUp: function () { syncCaret() }, onMouseUp: function () { syncCaret() }, onPaste: function () { markPaste() }, onContextMenu: onEdContextMenu, onCompositionStart: function () { composingRef.current = true }, onCompositionEnd: function () { composingRef.current = false }, onBlur: function () { if (st.mcursors && st.mcursors.length) { st.mcursors = []; bump() } timer.timeout(function () { setCompl(null); bump() }, 120) } })),
