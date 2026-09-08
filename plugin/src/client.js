@@ -945,7 +945,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       if (!st || !st.tabs || !st.tabs.length) return
       // ===== WORKSTATION: 只自动保存勾选「自动保存」的标签 =====
       const list = st.tabs.filter(function (t) { return t.autoSave === true }).map(function (t) {
-        return { id: t.id, name: t.name || ('Tab' + t.id), sql: t.sql || '', params: t.params || {}, note: t.note || '' }
+        return { id: t.id, name: t.name || ('Tab' + t.id), sql: t.sql || '', params: t.params || {}, note: t.note || '', collectId: t.collectId }
       })
       wsMetaFor(sid).tabs = list
       for (let i = 0; i < list.length; i++) {
@@ -953,8 +953,10 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         const base = wsBaseOf(t)
         wsNoteFile(st, base)
         callHost('ws.workspace.save', { sessionId: sid, kind: 'sql', name: base, content: t.sql })
-        // ===== WORKSTATION: 标签名存入 params（文件名只有 id，工作区树/恢复靠 __name 显示名）=====
+        // ===== WORKSTATION: 标签名/收藏 id 存入 params（文件名只有 id，工作区树/恢复靠 __name 显示名、
+        // __collectId 用于收藏标签去重——同一收藏刷新后也只会有一个标签）=====
         const paramsJson = Object.assign({}, t.params || {}, { __name: t.name || ('Tab' + t.id) })
+        if (t.collectId) paramsJson.__collectId = t.collectId
         callHost('ws.workspace.save', { sessionId: sid, kind: 'params', name: base, content: JSON.stringify(paramsJson) })
         if (t.note) callHost('ws.workspace.save', { sessionId: sid, kind: 'note', name: base, content: t.note })
       }
@@ -982,7 +984,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
           ]).then(function (rs) {
             const sr = rs[0], pr = rs[1], nr = rs[2]
             const t = { id: id, name: nm, sql: (sr && sr.ok) ? sr.content : '', params: {}, note: '', engine: '2', dsId: 2, wsFile: f.name }
-            if (pr && pr.ok) { try { const p = JSON.parse(pr.content); if (p && typeof p === 'object') { t.params = p; if (p.__name) t.name = p.__name; delete t.params.__name } } catch (e) { /* ignore */ } }
+            if (pr && pr.ok) { try { const p = JSON.parse(pr.content); if (p && typeof p === 'object') { t.params = p; if (p.__name) t.name = p.__name; delete t.params.__name; if (p.__collectId) t.collectId = p.__collectId; delete t.params.__collectId } } catch (e) { /* ignore */ } }
             if (nr && nr.ok) t.note = nr.content
             tabs.push(t)
           })
@@ -999,7 +1001,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       if (wm.loaded && wm.tabs && wm.tabs.length && st.__wsRestored !== true) {
         markProgSqlSet()
         st.tabs = wm.tabs.map(function (t) {
-          return { id: t.id, name: t.name, sql: t.sql, engine: t.engine || '2', dsId: t.dsId || 2, params: t.params || {}, note: t.note || '', autoSave: true, bottomTab: 'result', running: false, executeId: '', finish: '', log: '', errMsg: '', result: null, wsFile: t.id != null ? String(t.id) : undefined }
+          return { id: t.id, name: t.name, sql: t.sql, engine: t.engine || '2', dsId: t.dsId || 2, params: t.params || {}, note: t.note || '', autoSave: true, bottomTab: 'result', running: false, executeId: '', finish: '', log: '', errMsg: '', result: null, collectId: t.collectId, wsFile: t.id != null ? String(t.id) : undefined }
         })
         st.activeTab = st.tabs[0].id
         st.__wsRestored = true
@@ -1432,6 +1434,15 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       } : function () {
         // ===== WORKSTATION: 点击收藏 → 新建标签打开（标签名 = 收藏名），标记 collectId 供「保存」更新用。
         // 全自动保存模型：收藏标签也本地落盘一份（wsFile 关联），关标签删本地副本不影响服务端收藏。=====
+        // ===== WORKSTATION: 同一收藏只允许一个标签 —— 已打开则直接激活，不重复新建
+        // （collectId 随自动保存写入 params(__collectId)，刷新恢复后仍能命中）=====
+        const existing = st.tabs.find(function (t) { return t.collectId === node.id })
+        if (existing) {
+          st.activeTab = existing.id
+          bump()
+          showToast(st, '已切换到 ' + existing.name)
+          return
+        }
         const nid = wsNextTabId(st)
         const ntab = { id: nid, name: node.name || ('收藏' + nid), sql: node.querySql || '', engine: '2', dsId: 2, params: {}, note: '', autoSave: true, bottomTab: 'result', running: false, executeId: '', finish: '', log: '', errMsg: '', result: null, collectId: node.id, wsFile: String(nid) }
         try {
@@ -1441,9 +1452,9 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         st.tabs.push(ntab)
         st.activeTab = nid
         wsNoteFile(st, String(nid))
-        // 立即落盘（含 __name = 收藏名，刷新恢复时显示收藏名）
+        // 立即落盘（含 __name = 收藏名、__collectId = 收藏 id，刷新恢复时显示名/去重）
         callHost('ws.workspace.save', { sessionId: sid, kind: 'sql', name: String(nid), content: ntab.sql })
-        callHost('ws.workspace.save', { sessionId: sid, kind: 'params', name: String(nid), content: JSON.stringify(Object.assign({}, ntab.params, { __name: ntab.name })) })
+        callHost('ws.workspace.save', { sessionId: sid, kind: 'params', name: String(nid), content: JSON.stringify(Object.assign({}, ntab.params, { __name: ntab.name, __collectId: ntab.collectId })) })
         bump()
       }
       return h('div', { onContextMenu: function (e) { e.preventDefault(); e.stopPropagation(); st.collectMenu = { node: node, x: e.clientX, y: e.clientY }; bump() } },
