@@ -2,14 +2,14 @@
 
 > 一个「给人用的 OLAP 工作站」：**捆绑独立 DSH 实例（真隔离）**，无桌面壳 —— 独立端口 + 浏览器打开。
 > 左边是完整的 yh-olap OLAP 工作页（库表/收藏/编辑器/历史/下载），右边是会话页（数据分析 Agent 聊天）。
-> SQL / 便签 / 参数 **多文件本地持久化**，下次打开新会话自动恢复；sqlkb 知识库已集成到面板（知识库 tab）。
+> SQL / 便签 / 参数 **多文件本地持久化**，下次打开新会话自动恢复；知识库改用 llm-wiki（`@sidleo3/dsh-wiki`），由会话里的模型用 `wiki_*` 工具检索/写入（面板不含知识库 tab）。
 
 ## 布局决策（来自前序会话 a/b/c）
 
 | 决策点 | 结论 | 落地 |
 |---|---|---|
 | a. 壳 | **不包装** | 独立端口 + 浏览器（无 Electron/Tauri） |
-| b. 隔离 | **捆绑独立 DSH 实例（真隔离）** | 独立 `DSH_HOME`（`.dsh-home/`）+ 独立端口 5175；与 3080 主实例互不干扰（会话/设置/预设隔离），仅共享本机资产（yh_bigdata 账号凭据、sqlkb 知识库） |
+| b. 隔离 | **捆绑独立 DSH 实例（真隔离）** | 独立 `DSH_HOME`（`.dsh-home/`）+ 独立端口 5175；与 3080 主实例互不干扰（会话/设置/预设隔离），仅共享本机资产（yh_bigdata 账号凭据、`~/.agents` 下的 llm-wiki 知识库） |
 | c. 持久化 | **多文件** | `~/.yh-olap/workspace/` 下按 `sql/ params/ notes/` 多文件保存，跨会话恢复 |
 
 ## 一键启动
@@ -32,22 +32,22 @@ yh-olap profile/
 ├── start.sh / stop.sh     # 启动/停止脚本（真隔离实例）
 ├── profile/               # 独立 profile 配置源（package.template.json + cordis.yml + cordis.patch.yml）
 ├── preset/yh-data/        # 「数据分析师 & 数据工程师」agent preset（含 OLAP 知识 skill）
-├── plugin/                # dsh-yh-olap-workstation 插件（独立实现：OLAP 工作页 + 工作站布局 + 知识库/持久化）
+├── plugin/                # dsh-yh-olap-workstation 插件（独立实现：OLAP 工作页 + 工作站布局 + 本地持久化）
 │   └── src/{host.js,client.js}
 └── .dsh-home/             # （运行时生成，gitignore）独立 DSH 数据根：profiles/ 会话/ 设置/ 预设
 ```
 
 ## 组件说明
 
-- **profile（独立实例）**：`dsh.profile.bundles = @deepseek-ai/dsh-base + @deepseek-ai/dsh-web-app + @sidleo3/dsh-sqlkb + dsh-yh-olap-workstation`。只挂 SQL 相关插件，不挂 lark-* / 侧栏 / 办公插件 —— 工具空间干净，不被 web 内其它插件干扰。
+- **profile（独立实例）**：`dsh.profile.bundles = @deepseek-ai/dsh-base + @deepseek-ai/dsh-web-app + @sidleo3/dsh-wiki + dsh-yh-olap-workstation`。只挂 SQL 相关插件，不挂 lark-* / 侧栏 / 办公插件 —— 工具空间干净，不被 web 内其它插件干扰。
 - **工作站插件（dsh-yh-olap-workstation）**：独立实现，包含：
-  - **OLAP 工作页**：库表/收藏/编辑器/历史/下载 —— 完整的数据查询工作台（左栏四 tab：库表/收藏/工作区/知识库）。
+  - **OLAP 工作页**：库表/收藏/编辑器/历史/下载 —— 完整的数据查询工作台（左栏两 tab：库表/收藏）。
   - **布局**：三列 —— DSH 原生 sidebar（会话选择）最左、OLAP 面板（原 details 槽）中、会话（conversation 槽）右；sidebar **默认收起**（56px 展开条，点开看会话/工作区列表，与 dsh web 一致）；OLAP/会话之间自建分隔条可调宽，启动自动展开 OLAP。
   - **本地持久化（多文件）**：`~/.yh-olap/workspace/{sql,params,notes}/` 每个 tab 一份文件，SQL/参数/便签自动保存，新会话打开自动恢复。
   - **工作区 tab**：左树新增，浏览/打开/新建/重命名/删除本地 SQL 文件。
-  - **知识库 tab**：左树新增，sqlkb 的 表/示例/坑点 浏览 + 搜索 + 明细。
+  - **知识库**：面板内不再浏览知识库（原「知识库」tab 已下线）；知识库为 llm-wiki bundle（`~/.agents/wiki-registry.json` 里的命名 bundle，默认 active），由会话里的模型用 `wiki_*` 工具检索/写入。
   - **会话切换**：用 DSH 原生 sidebar（最左列，默认收起）——不需要额外的历史会话按钮。
-- **preset（yh-data）**：数据工程师 & 数据分析师人设；SQL 安全红线、sqlkb 硬要求、优先用 `olap` 工具（插件自身 API）、永辉 OLAP 知识 skill。
+- **preset（yh-data）**：数据工程师 & 数据分析师人设；SQL 安全红线、llm-wiki 硬要求、优先用 `olap` 工具（插件自身 API）、永辉 OLAP 知识 skill。
 
 ## 开发说明
 
@@ -76,7 +76,7 @@ node -e "new Function(require('fs').readFileSync('plugin/src/client.js','utf8'))
 - **开箱即用（不再需要手动选工作区）**：`start.sh` 首次播种默认工作区（仓库目录）到 `workspace.json`；客户端启动后若没有会话，自动 `workspaces.connectWorkspace` 新建一个**绑定工作区**的会话并打开 —— 首次打开直接进入工作站，composer 可用（占位符「描述你想要构建的内容」），无需点「选择工作区」。
 - 布局重排已验证（计算样式，含**列高**）：`grid-template-columns: 1013px 699px`、`grid-template-rows: 885px`，侧栏 `display:none`，会话列在右、OLAP 列在左（details 列 `h:885px` 可见），overlay 跨列，拖动条隐藏。**OLAP 编辑器在视口内（y:74, h:499）。**
 - OLAP 面板端到端实测：编辑器输入 `select 1 as a,2 as b,3 as c` → 点「执行」→ 结果 tab 显示「共 1 行 / a b c / 1 2 3」。
-- RPC 全链路：`ws.workspace.{list,save,read,rename,remove}`（sql/params/notes 多文件往返）、`ws.sqlkb.{list,get}`、`ws.sessions.list` 均返回 `ok:true`。
+- RPC 全链路：`ws.workspace.{list,save,read,rename,remove}`（sql/params/notes 多文件往返）、`ws.sessions.list` 均返回 `ok:true`。
 - preset 生效：浏览器显示「OLAP」；API Key 提示消失（凭据已播种）。
 - **端到端会话已实测**：在工作站里发消息，模型正常回复（「我是专为永辉数据中台 OLAP 工作站打造的取数分析助手…」），OLAP 面板在左、会话在右。
 
