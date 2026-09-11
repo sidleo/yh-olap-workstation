@@ -858,6 +858,10 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       return breaks.length ? breaks : NO_BREAKS
     }
     // 由断点推出每逻辑行的物理行信息（形状与 visualRowsOf 一致，供行号/光标行使用）
+    // 判据用 `bks[bi] < end`（不是 `<=`）：断点是「本行内新视觉行的起始偏移」，行内折行的断点
+    // 必然 < end；而 SQL 以 \n 结尾时 measureSoftBreaks 会补一个「s.length」的尾部断点（只为让
+    // 覆盖层多出一个空行盒、与 textarea 等高），它的值恰好等于最后那个空行的 end —— 用 `<=` 会把它
+    // 算成该空行的折行 → 该行多出一行、光标停在这一行时「当前行背景」整体向下偏一行。
     function rowsFromBreaks(sql, breaks) {
       const lines = String(sql || '').split('\n')
       const bks = breaks || NO_BREAKS
@@ -867,7 +871,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         const ln = lines[li]
         const end = off + ln.length
         let segs = 1
-        while (bi < bks.length && bks[bi] <= end) { bi++; segs++ }
+        while (bi < bks.length && bks[bi] < end) { bi++; segs++ }
         rows.push({ lineIdx: li, physStart: phys, physLen: segs, text: ln })
         phys += segs
         off = end + 1
@@ -875,6 +879,8 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       return { rows: rows, totalPhys: phys }
     }
     // 某字符偏移所在的物理行序号（0-based）
+    // 同 rowsFromBreaks：`bks[bi] < end` —— 尾部补的空行断点（= 最后空行的 end）不参与折行计数，
+    // 否则光标落在这个空行上时返回的物理行号会多 1 → 当前行背景比光标低一行。
     function physRowOfOffset(sql, breaks, pos) {
       const lines = String(sql || '').split('\n')
       const bks = breaks || NO_BREAKS
@@ -883,7 +889,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         const end = off + lines[li].length
         const startBi = bi
         let segs = 1
-        while (bi < bks.length && bks[bi] <= end) { bi++; segs++ }
+        while (bi < bks.length && bks[bi] < end) { bi++; segs++ }
         if (pos <= end) {
           let inner = 0
           for (let k = startBi; k < bi; k++) if (bks[k] <= pos) inner++
