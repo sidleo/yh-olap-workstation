@@ -1,6 +1,6 @@
 // yh-olap 独立工作站插件 Host 半（plain ESM，Node 端，独立实现）。
 // 职责：网络/认证/OLAP API 代理 + `olap` 模型工具 + 反向命令队列 +
-//       本地工作区多文件持久化（sql/params/note）+ sqlkb/kb 只读浏览 + 会话列表。
+//       本地工作区多文件持久化（sql/params/note）+ 会话列表。
 // 客户端 RPC 统一 POST /api/yh-olap/rpc 分发到 handles/queues/wsHandlers 表。
 // 文件读写用 node:fs；模型工具经 ctx.tools.register(tool)。
 
@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 
 // ===== WORKSTATION: 独立工作站插件 =====
-// 本地工作区多文件持久化（sql/params/note）、sqlkb 只读浏览、历史会话列表。
+// 本地工作区多文件持久化（sql/params/note）、历史会话列表。
 export const name = 'yh-olap-workstation'
 export const inject = ['webServer', 'tools']
 
@@ -24,10 +24,8 @@ const BASE_PALLAS = 'https://prokongbigdata.yonghui.cn/pallas/manager'
 const MAGPIE_BASE = 'https://prokongbigdata.yonghui.cn/yh-magpie-bridge-manager'
 const TTL_MS = 6 * 3600 * 1000
 
-// ===== WORKSTATION: 工作区/知识库/会话 常量与服务句柄 =====
+// ===== WORKSTATION: 工作区/会话 常量与服务句柄 =====
 const WORKSPACE_ROOT = join(HOME, '.yh-olap', 'workspace')
-const SQLKB_ROOT = join(HOME, '.agents', 'sqlkb')
-const KB_ROOT = join(HOME, '.agents', 'kb')
 let sessionQuerySvc = null
 let sessionStoreSvc = null
 
@@ -196,6 +194,15 @@ async function req(spec) {
     }
     const headText = r.out.slice(0, cut).toString('utf8')
     payload = r.out.slice(cut)
+    // 下载接口在「文件未生成/生成失败」时返回 JSON（如 {"code":"001","message":"文件生成状态未正确完成。[3]"}），
+    // 且不带 Content-Disposition——不能当文件存下来（否则会落一个 .xlsx 后缀的 JSON 报错）。
+    const ctype = /content-type:\s*([^\r\n]+)/i.exec(headText)
+    if (ctype && /json/i.test(ctype[1])) {
+      try {
+        const j = JSON.parse(payload.toString('utf8'))
+        return { ok: false, error: j.message || j.msg || ('download failed: ' + (j.code || 'unknown')) }
+      } catch (e) { /* 非 JSON 正文，按二进制继续 */ }
+    }
     const cd = /content-disposition:\s*[^;\r\n]*;\s*filename\*?=(?:"([^"]*)"|([^;\r\n]+))/i.exec(headText)
       || /filename=(?:"([^"]*)"|([^;\r\n]+))/i.exec(headText)
     let fn = ''
@@ -257,6 +264,15 @@ async function runSqlFull(payload, timeoutSec) {
     }
   }
   return { ok: true, executeId, finish: state.finish, errMsg: state.errMsg || lastErr, log: logText, result }
+}
+
+// ===== WORKSTATION: 下载文件命名 =====
+// 统一为 `olap-<引擎名>-<id><服务端后缀>`；后缀取服务端 Content-Disposition 里的文件名，
+// 不硬编码扩展名（服务端给什么就用什么）。引擎名与面板展示一致：hive/impala/ck/doris。
+const ENGINE_LABEL = { 1: 'hive', 2: 'impala', 3: 'ck', 4: 'doris' }
+function downloadName(engine, id, serverName) {
+  const ext = (/(\.[A-Za-z0-9]+)\s*$/.exec(String(serverName || '')) || [])[1] || ''
+  return 'olap-' + (ENGINE_LABEL[Number(engine)] || ('engine' + engine)) + '-' + id + ext
 }
 
 const handles = {
@@ -324,13 +340,9 @@ const handles = {
     return rr
   },
   'olap.history.fast': async (args) => {
-    // 历史结果快速下载（≤1000 条）：olapResultSimple/{requestId}
+    // 历史结果快速下载（≤1000 条）：olapResultSimple/{requestId}，命名 olap-<引擎>-<查询id>.<服务端后缀>
     const rr = await req({ path: '/download/olapResultSimple/' + args.requestId, method: 'GET', binary: true, timeout: 120 })
-    if (rr.ok && rr.filename && /^\d+\.xlsx$/i.test(rr.filename)) {
-      const now = new Date()
-      const pad = (n) => String(n).padStart(2, '0')
-      rr.filename = (args.fileName || ('olap-fast-' + now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes()))) + '.xlsx'
-    }
+    if (rr.ok) rr.filename = downloadName(args.engine, args.requestId, rr.filename)
     return rr
   },
   'olap.history.order': async (args) => {
@@ -358,27 +370,14 @@ const handles = {
     if (!detail.ok) return detail
     const d = detail.data || {}
     const engine = String(d.engine !== undefined && d.engine !== null ? d.engine : args.engine)
-    // 服务端 Content-Disposition 名是纯时间戳（如 1787823661881.xlsx），不够友好。
-    // 从 querySql 的 `-- 标题: XXX` 注释提取做文件名；没有则用下载-日期。
-    let niceName = ''
-    const qsql = d.querySql || args.querySql || ''
-    const titleM = /--\s*标题\s*[:：]\s*([^\n\r]+)/.exec(qsql)
-    if (titleM) niceName = (titleM[1] || '').trim()
-    if (!niceName) {
-      const now = new Date()
-      const pad = (n) => String(n).padStart(2, '0')
-      niceName = 'olap-' + now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes())
-    }
-    const friendly = args.fileName || (niceName + '.xlsx')
+    // 命名 olap-<引擎>-<任务id>.<服务端后缀>：服务端 CD 名是下载时刻的纯时间戳（如 1787823661881.xlsx），
+    // 且 magpie 的 fileName 参数会被服务端忽略，故不再自造名字、也不再传 fileName。
+    const named = (rr) => { if (rr.ok) rr.filename = downloadName(engine, orderId, rr.filename); return rr }
     if (engine === '1') {
-      const rr = await req({ path: '/download/olapResult/' + (d.requestId || ''), method: 'GET', binary: true, timeout: 300 })
-      if (rr.ok && rr.filename && /^\d+\.xlsx$/i.test(rr.filename)) rr.filename = friendly
-      return rr
+      return named(await req({ path: '/download/olapResult/' + (d.requestId || ''), method: 'GET', binary: true, timeout: 300 }))
     }
     const dlRid = d.downLoadRequestId || d.requestId || ''
-    const rr2 = await req({ path: '/open/api/downloadToExcel?requestId=' + encodeURIComponent(dlRid) + '&fileName=' + encodeURIComponent(friendly), base: MAGPIE_BASE, method: 'GET', binary: true, timeout: 300 })
-    if (rr2.ok && rr2.filename && /^\d+\.xlsx$/i.test(rr2.filename)) rr2.filename = friendly
-    return rr2
+    return named(await req({ path: '/open/api/downloadToExcel?requestId=' + encodeURIComponent(dlRid), base: MAGPIE_BASE, method: 'GET', binary: true, timeout: 300 }))
   },
   'olap.download.refresh': async (args) => req({ path: '/download/refresh', method: 'POST', body: { downloadId: args.downloadId }, timeout: 30 }),
 }
@@ -405,7 +404,7 @@ const queues = {
     return { ok: true, active: sid ? getOlapModeBySid(sid) : false }
   },
 }
-// ===== WORKSTATION: workspace 多文件持久化 + sqlkb 只读浏览 + 历史会话列表 =====
+// ===== WORKSTATION: workspace 多文件持久化 + 历史会话列表 =====
 function wsSafeFile(name) {
   // 只允许普通文件名：去掉路径分隔符/目录穿越
   const s = String(name || '').replace(/[\\/]/g, '_').replace(/\.\.+/g, '').trim()
@@ -426,55 +425,6 @@ function wsDir(sid, kind) {
     if (s) return join(WORKSPACE_ROOT, s, sub)
   }
   return join(WORKSPACE_ROOT, sub)
-}
-function parseSqlkbFm(txt) {
-  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(txt)
-  if (!m) return null
-  const fm = {}
-  for (const line of m[1].split('\n')) {
-    const i = line.indexOf(':')
-    if (i <= 0) continue
-    const key = line.slice(0, i).trim()
-    let val = line.slice(i + 1).trim()
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) val = val.slice(1, -1)
-    fm[key] = val
-  }
-  return fm
-}
-function parseSqlkbFile(txt) {
-  const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(txt)
-  if (!m) return { frontmatter: {}, body: txt }
-  const fm = {}
-  for (const line of m[1].split('\n')) {
-    const i = line.indexOf(':')
-    if (i <= 0) continue
-    const key = line.slice(0, i).trim()
-    let val = line.slice(i + 1).trim()
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) val = val.slice(1, -1)
-    fm[key] = val
-  }
-  return { frontmatter: fm, body: (m[2] || '').trim() }
-}
-
-
-// ===== WORKSTATION: kb 按条目名定位文件（跨分类递归）=====
-async function findKbFile(name) {
-  const walk = async function (d, prefix) {
-    let ents = []
-    try { ents = await readdir(d, { withFileTypes: true }) } catch (e) { return null }
-    for (const en of ents) {
-      const full = join(d, en.name)
-      if (en.isDirectory()) { const r = await walk(full, prefix ? prefix + '/' + en.name : en.name); if (r) return r }
-      else if (en.isFile() && en.name.endsWith('.md') && en.name !== 'README.md') {
-        let fm = {}
-        try { fm = parseSqlkbFm(await readFile(full, 'utf8')) || {} } catch (e) { /* ignore */ }
-        const nm = fm.name || en.name.replace(/\.md$/, '')
-        if (nm === name || en.name.replace(/\.md$/, '') === name) return { file: full, category: prefix || '' }
-      }
-    }
-    return null
-  }
-  return walk(KB_ROOT, '')
 }
 
 const wsHandlers = {
@@ -553,134 +503,6 @@ const wsHandlers = {
     try { await rename(join(dir, from + wsExt(kind)), join(dir, to + wsExt(kind))); return { ok: true } } catch (e) { return { ok: false, error: String(e && e.message) } }
   },
 
-  // ── sqlkb 只读浏览（表/示例/坑点）───────────────────────────────────────
-  'ws.sqlkb.list': async (args) => {
-    const only = args.kind // table | example | pitfall | all
-    const out = { ok: true, tables: [], examples: [], pitfalls: [] }
-    const dirs = { tables: 'tables', examples: 'examples', pitfalls: 'pitfalls' }
-    for (const key of Object.keys(dirs)) {
-      if (only && only !== 'all' && only !== key) continue
-      const dir = join(SQLKB_ROOT, dirs[key])
-      try {
-        const ents = await readdir(dir, { withFileTypes: true })
-        for (const en of ents) {
-          if (!en.isFile() || !en.name.endsWith('.md')) continue
-          const fm = parseSqlkbFm(await readFile(join(dir, en.name), 'utf8'))
-          if (!fm) continue
-          out[key].push({ name: en.name.replace(/\.md$/, ''), kind: key, ...fm })
-        }
-      } catch (e) { /* dir missing */ }
-    }
-    return out
-  },
-  'ws.sqlkb.get': async (args) => {
-    const id = String(args.id || '').replace(/\.md$/, '').replace(/[\\/]/g, '_')
-    const dirs = { tables: 'tables', examples: 'examples', pitfalls: 'pitfalls' }
-    for (const key of Object.keys(dirs)) {
-      const file = join(SQLKB_ROOT, dirs[key], id + '.md')
-      try {
-        const parsed = parseSqlkbFile(await readFile(file, 'utf8'))
-        return { ok: true, name: id, kind: key, frontmatter: parsed.frontmatter, body: parsed.body }
-      } catch (e) { /* try next */ }
-    }
-    return { ok: false, error: 'not found: ' + id }
-  },
-
-  // ── kb 通用知识库只读浏览（~/.agents/kb：目录树分类 + .md 条目）─────────────
-  'ws.kb.tree': async () => {
-    try {
-      const cats = await readdir(KB_ROOT, { withFileTypes: true })
-      const out = { ok: true, root: KB_ROOT, categories: [], categoriesMeta: {} }
-      // categories.yml 元数据
-      try { out.categoriesMeta = parseSqlkbFile(await readFile(join(KB_ROOT, 'categories.yml'), 'utf8')).frontmatter || {} } catch (e) { /* optional */ }
-      const metaYml = out.categoriesMeta.categories && typeof out.categoriesMeta.categories === 'object' ? out.categoriesMeta.categories : {}
-      const walk = async function (dir, prefix) {
-        let ents = []
-        try { ents = await readdir(dir, { withFileTypes: true }) } catch (e) { return [] }
-        const rows = []
-        for (const en of ents) {
-          const full = join(dir, en.name)
-          if (en.isDirectory()) {
-            const path = prefix ? prefix + '/' + en.name : en.name
-            const meta = metaYml[path] || {}
-            if (meta && meta.enabled === false) continue
-            const sub = await walk(full, path)
-            rows.push({ type: 'dir', path: path, title: (meta && meta.title) || en.name, description: (meta && meta.description) || '', children: sub })
-          } else if (en.isFile() && en.name.endsWith('.md') && en.name !== 'README.md') {
-            let fm = {}
-            try { fm = parseSqlkbFm(await readFile(full, 'utf8')) || {} } catch (e) { /* ignore */ }
-            rows.push({ type: 'item', name: fm.name || en.name.replace(/\.md$/, ''), summary: fm.summary || '', tags: fm.tags || '', file: (prefix ? prefix + '/' : '') + en.name.replace(/\.md$/, ''), category: prefix || '' })
-          }
-        }
-        return rows
-      }
-      for (const en of cats) {
-        if (!en.isDirectory()) continue
-        const children = await walk(join(KB_ROOT, en.name), en.name)
-        out.categories.push({ type: 'dir', path: en.name, title: (metaYml[en.name] && metaYml[en.name].title) || en.name, description: (metaYml[en.name] && metaYml[en.name].description) || '', children: children })
-      }
-      return out
-    } catch (e) { return { ok: false, error: String(e && e.message) } }
-  },
-  'ws.kb.list': async (args) => {
-    const cat = String(args.category || '').replace(/\.\./g, '').replace(/^\/|\/$/g, '')
-    const dir = cat ? join(KB_ROOT, cat) : KB_ROOT
-    try {
-      const rows = []
-      const walk = async function (d, prefix) {
-        let ents = []
-        try { ents = await readdir(d, { withFileTypes: true }) } catch (e) { return }
-        for (const en of ents) {
-          const full = join(d, en.name)
-          if (en.isDirectory()) await walk(full, prefix ? prefix + '/' + en.name : en.name)
-          else if (en.isFile() && en.name.endsWith('.md') && en.name !== 'README.md') {
-            let fm = {}
-            try { fm = parseSqlkbFm(await readFile(full, 'utf8')) || {} } catch (e) { /* ignore */ }
-            rows.push({ name: fm.name || en.name.replace(/\.md$/, ''), summary: fm.summary || '', tags: fm.tags || '', related: fm.related || '', category: prefix || cat, file: (prefix ? prefix + '/' : cat ? cat + '/' : '') + en.name.replace(/\.md$/, '') })
-          }
-        }
-      }
-      await walk(dir, '')
-      return { ok: true, rows: rows }
-    } catch (e) { return { ok: false, error: String(e && e.message) } }
-  },
-  'ws.kb.get': async (args) => {
-    const id = String(args.name || '').replace(/\.md$/, '').replace(/[\\/]/g, '~')
-    // 通过 tree 定位文件更稳：直接按 name 全局找
-    try {
-      const found = await findKbFile(id)
-      if (!found) return { ok: false, error: 'not found: ' + id }
-      const parsed = parseSqlkbFile(await readFile(found.file, 'utf8'))
-      return { ok: true, name: parsed.frontmatter.name || id, frontmatter: parsed.frontmatter, body: parsed.body, category: found.category }
-    } catch (e) { return { ok: false, error: String(e && e.message) } }
-  },
-  'ws.kb.search': async (args) => {
-    const q = String(args.q || '').trim().toLowerCase()
-    if (!q) return { ok: true, rows: [] }
-    try {
-      const rows = []
-      const walk = async function (d, prefix) {
-        let ents = []
-        try { ents = await readdir(d, { withFileTypes: true }) } catch (e) { return }
-        for (const en of ents) {
-          const full = join(d, en.name)
-          if (en.isDirectory()) await walk(full, prefix ? prefix + '/' + en.name : en.name)
-          else if (en.isFile() && en.name.endsWith('.md') && en.name !== 'README.md') {
-            let txt = ''
-            try { txt = await readFile(full, 'utf8') } catch (e) { continue }
-            const fm = parseSqlkbFm(txt) || {}
-            const name = fm.name || en.name.replace(/\.md$/, '')
-            const summary = fm.summary || ''
-            const hit = (name + ' ' + summary + ' ' + (fm.tags || '') + ' ' + txt.slice(0, 2000)).toLowerCase().indexOf(q) !== -1
-            if (hit) rows.push({ name: name, summary: summary, tags: fm.tags || '', category: prefix || '', file: (prefix ? prefix + '/' : '') + en.name.replace(/\.md$/, '') })
-          }
-        }
-      }
-      await walk(KB_ROOT, '')
-      return { ok: true, rows: rows.slice(0, 60) }
-    } catch (e) { return { ok: false, error: String(e && e.message) } }
-  },
-
   // ── 历史会话列表（给右上「历史会话」呼出面板）────────────────────────────
   'ws.sessions.list': async () => {
     try {
@@ -743,7 +565,7 @@ const tool = {
     // ===== WORKSTATION: 标准 JSON Schema（顶层 type:'object' + properties + required）。
     // 原简写映射格式（属性直接平铺）在 commandcode 等第三方模型通道上未被框架转成
     // 标准函数 schema，模型网关报 "Invalid schema ... got 'type: null'"；
-    // 与 sqlkb 等可正常工作工具的参数格式对齐。=====
+    // 与其它可用模型工具（如 wiki_*）的参数格式对齐。=====
     type: 'object',
     properties: {
       action: { type: 'string', enum: ['write', 'run', 'stop', 'state', 'refresh'], description: '要执行的操作' },

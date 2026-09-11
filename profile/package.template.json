@@ -2,7 +2,7 @@
   "name": "dsh-profile-yh-olap-workstation",
   "private": true,
   "dependencies": {
-    "@sidleo3/dsh-sqlkb": "0.1.6",
+    "@sidleo3/dsh-wiki": "0.2.0",
     "dsh-yh-olap-workstation": "link:__PLUGIN_PATH__"
   },
   "dsh": {
@@ -10,7 +10,7 @@
       "bundles": [
         "@deepseek-ai/dsh-base",
         "@deepseek-ai/dsh-web-app",
-        "@sidleo3/dsh-sqlkb",
+        "@sidleo3/dsh-wiki",
         "dsh-yh-olap-workstation"
       ]
     }
