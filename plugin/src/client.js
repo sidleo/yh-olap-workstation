@@ -17,8 +17,8 @@
 //  L661-913  本地工作区持久化（per-session 多文件）+ 布局跟随 + 新会话重置
 //  L915-1019 下载 blob / 数据源/库/表/列懒加载
 //  L1020-1323 收藏树 + 工作区树组件（WorkspaceTree）
-//  L1324-1448 知识库树组件（SqlkbTree/KB）+ NoteModal
-//  L1449-1592 WsDivider（对话区宽度分隔条）+ LeftArea（左栏四 tab）
+//  L1324-1448 便签弹窗（NoteModal）
+//  L1449-1592 WsDivider（对话区宽度分隔条）+ LeftArea（左栏两 tab）
 //  L1594-1778 光标 mirror 定位 / schema·表·别名查找 / 补全排名
 //  L1779-2272 Editor（大组件：补全/键盘/滚动/双击括号/行号）
 //  L2273-2477 doRun/pollRun/killRun/downloadSimple（执行与结果轮询）
@@ -123,20 +123,29 @@ window.__ModuleLoader__.load({
 .yh-olap-func .stop:hover{background:var(--yh-ui-danger-weak)}
 .yh-olap-split{flex:1;display:flex;flex-direction:column;min-height:0}
 .yh-olap-editor{position:relative;overflow:hidden;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;line-height:1.55}
-.yh-olap-gutter{position:absolute;top:0;left:0;bottom:0;width:34px;margin:0;background:var(--dsw-alias-bg-layer-2,#10161d);color:var(--dsw-alias-label-secondary,#4a5a6e);text-align:right;padding:10px 6px 10px 0;box-sizing:border-box;user-select:none;overflow:hidden;white-space:pre;font:inherit}
+.yh-olap-gutter{position:absolute;top:0;left:0;bottom:0;width:34px;margin:0;background:var(--yh-ui-gutter-bg,#f0f1f3);color:var(--dsw-alias-label-secondary,#4a5a6e);text-align:right;padding:4px 6px 10px 0;box-sizing:border-box;user-select:none;overflow:hidden;white-space:pre;font:inherit}
 .yh-olap-code{position:absolute;top:0;left:34px;right:0;bottom:0}
 :root{--yh-k:#9d4dd3;--yh-f:#00897b;--yh-s:#c2571a;--yh-p:#c0392b;--yh-n:#2e7d32;--yh-i:#1f2937;--yh-c:#6b7280;--yh-x:#4b5563}
 html[style*="color-scheme: dark"]{--yh-k:#c586c0;--yh-f:#4ec9b0;--yh-s:#e6a86e;--yh-p:#d16969;--yh-n:#b5cea8;--yh-i:#d7dee6;--yh-c:#5f7f5f;--yh-x:#aab4c0}
 /* ===== WORKSTATION: UI 语义 token（品牌色/危险色/链接态）。CSS 里硬编码的品牌
    色 #4176e6 / 危险色 #e5484d 统一收敛到这里，换肤/品牌调整只改一处。
-   以 var(--yh-ui-*) 引用；深浅色两套与 --yh-* 高亮变量同规则。===== */
-:root{--yh-ui-brand:#4176e6;--yh-ui-brand-weak:rgba(65,118,230,.1);--yh-ui-danger:#e5484d;--yh-ui-danger-weak:rgba(229,72,77,.1);--yh-ui-ondark:#fff}
-html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(77,140,255,.14);--yh-ui-danger:#ff6b6b;--yh-ui-danger-weak:rgba(255,107,107,.12);--yh-ui-ondark:#fff}
+   以 var(--yh-ui-*) 引用；深浅色两套与 --yh-* 高亮变量同规则。
+   --yh-ui-gutter-bg：编辑器行号区（gutter）底色 —— 浅色下用浅灰与白色代码区
+   区分，深色下沿用原层色（--dsw-alias-bg-layer-2）不变。===== */
+:root{--yh-ui-brand:#4176e6;--yh-ui-brand-weak:rgba(65,118,230,.1);--yh-ui-danger:#e5484d;--yh-ui-danger-weak:rgba(229,72,77,.1);--yh-ui-ondark:#fff;--yh-ui-gutter-bg:#f0f1f3}
+html[style*="color-scheme: dark"]{--yh-ui-brand:#4d8cff;--yh-ui-brand-weak:rgba(77,140,255,.14);--yh-ui-danger:#ff6b6b;--yh-ui-danger-weak:rgba(255,107,107,.12);--yh-ui-ondark:#fff;--yh-ui-gutter-bg:var(--dsw-alias-bg-layer-2,#10161d)}
 .yh-olap-hl{position:absolute;inset:0;margin:0;padding:0;white-space:pre;overflow:hidden;pointer-events:none;color:var(--dsw-alias-label-primary,#d7dee6);font:13px/1.55 ui-monospace,Menlo,Consolas,monospace;box-sizing:border-box;letter-spacing:normal;word-spacing:0}
-.yh-olap-hl-inner{padding:10px 12px;will-change:transform;display:block;position:relative;z-index:0;box-sizing:border-box;white-space:pre-wrap;word-break:normal;overflow-wrap:break-word;line-height:1.55}
-.yh-olap-curline{position:absolute;left:-12px;right:-12px;height:20.15px;background:rgba(148,163,184,.13);pointer-events:none;z-index:-1;border-radius:2px}
-.yh-olap-input{position:absolute;inset:0;margin:0;padding:10px 12px;background:transparent;color:transparent;caret-color:var(--dsw-alias-label-primary,#fff);border:0;outline:none;resize:none;white-space:pre-wrap;overflow-x:hidden;overflow-y:overlay;font:13px/1.55 ui-monospace,Menlo,Consolas,monospace;box-sizing:border-box;letter-spacing:normal;word-spacing:0;word-break:normal;overflow-wrap:break-word;line-height:1.55}
+.yh-olap-hl-inner{padding:4px 4px 10px 4px;will-change:transform;display:block;position:relative;z-index:0;box-sizing:border-box;white-space:pre-wrap;word-break:normal;overflow-wrap:break-word;line-height:1.55}
+/* 当前行背景：绝对定位子元素的包含块是父级 hl-inner 的 padding-box，而文字从 hl-inner/textarea
+   的 4px 左 padding 之后才开始 —— 所以必须 left/right=4px 才能与文本区左右对齐（四边 padding
+   一致，改 padding 必须同时改这里，否则色条会与文字错位）。
+   原值 left/right:-12px 会让色条从文字左缘再往左伸 24px（用户实测"像多了一个空格"，误导缩进判断）。 */
+.yh-olap-curline{position:absolute;left:4px;right:4px;height:20.15px;background:rgba(148,163,184,.13);pointer-events:none;z-index:-1;border-radius:2px}
+.yh-olap-input{position:absolute;inset:0;margin:0;padding:4px 4px 10px 4px;background:transparent;color:transparent;caret-color:var(--dsw-alias-label-primary,#fff);border:0;outline:none;resize:none;white-space:pre-wrap;overflow-x:hidden;overflow-y:overlay;font:13px/1.55 ui-monospace,Menlo,Consolas,monospace;box-sizing:border-box;letter-spacing:normal;word-spacing:0;word-break:normal;overflow-wrap:break-word;line-height:1.55}
 .yh-olap-input::-webkit-scrollbar,.yh-olap-input::-webkit-scrollbar-track,.yh-olap-input::-webkit-scrollbar-thumb,.yh-olap-input::-webkit-scrollbar-corner{cursor:default}
+/* 自绘选区高亮：原生选区底色透明（仅在我们量到矩形时生效，量不到则回落原生高亮）*/
+.yh-olap-input.yh-selown::selection{background:transparent}
+.yh-olap-selhit{position:absolute;background:rgba(122,170,255,.30);pointer-events:none;z-index:-1;border-radius:2px}
 .yh-olap-mcur{position:absolute;width:1px;height:13px;background:var(--yh-ui-brand);pointer-events:none;z-index:2}
 /* ===== WORKSTATION: 查找替换小部件（编辑器右上角浮层，VSCode 风格）===== */
 .yh-olap-findbox{position:absolute;top:6px;right:14px;z-index:30;background:var(--dsw-alias-bg-overlay,#1b2431);border:1px solid var(--dsw-alias-border-l2,#33455a);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.4);padding:6px;user-select:none}
@@ -240,10 +249,12 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
 .yh-olap-modechip:disabled{opacity:.6;cursor:default}
 .yh-olap-modechip-x{margin-left:2px;font-size:13px;line-height:1;display:inline-flex;align-items:center;color:currentColor}`
 
-    // ===== WORKSTATION: 工作站布局 + 工作区/知识库/历史会话 组件样式 =====
+    // ===== WORKSTATION: 工作站布局 + 历史会话 组件样式 =====
     const WORKSTATION_CSS = `
-/* 工作站布局：OLAP(details) 左、会话(conversation) 右、默认侧栏隐藏、拖动条隐藏。
-   .yh-ws-frame 由 wsApplyLayout() 动态加到 AppFrame 根元素（class 名被 css-module 哈希，用属性/结构选中）。 */
+/* 工作站布局：OLAP(rightbar) 中、会话(main) 右、默认侧栏隐藏、拖动条隐藏。
+   .yh-ws-frame 由 wsApplyLayout() 动态加到 AppFrame 根元素（class 名被 css-module 哈希，用属性/结构选中）。
+   新版 DSH 的 AppFrame 仍是三列（sidebarCol|centerCol(main)|rightbarCol），第 3 个子的
+   rightbarCol 就是 OLAP 面板所在列，故下面的 nth-child 定位与旧 details 版完全一致。 */
 .yh-ws-frame{grid-template-columns:var(--yh-ws-sidebar-w,0px) var(--yh-ws-cols,minmax(0,2fr) minmax(340px,1fr)) !important;transition:none !important}
 .yh-ws-frame>div:nth-child(1){grid-column:1 !important;grid-row:1 !important}
 .yh-ws-frame>div:nth-child(2){grid-column:3 !important;grid-row:1 !important}
@@ -258,8 +269,6 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
 .yh-ws-ktools input{flex:1;min-width:0;height:24px;padding:0 8px;font-size:12px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2,#33455a);background:var(--dsw-alias-bg-layer-2,#1d2633);color:var(--dsw-alias-label-primary,#cdd7e0);outline:none}
 .yh-ws-ktools button{height:24px;padding:0 10px;font-size:12px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2,#33455a);background:var(--dsw-alias-bg-layer-2,#1d2633);color:var(--dsw-alias-label-primary,#cdd7e0);cursor:pointer}
 .yh-ws-ktools button.pri{background:var(--yh-ui-brand);border-color:var(--yh-ui-brand);color:var(--yh-ui-ondark)}
-.yh-ws-kbg{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;line-height:1.55;white-space:pre-wrap;word-break:break-all;color:var(--dsw-alias-label-primary,#b9c6d4);padding:8px 10px;margin:0}
-.yh-ws-back{cursor:pointer;color:var(--yh-ui-brand);font-size:12px;padding:2px 8px}
 .yh-ws-wsact{display:inline-flex;height:24px;padding:0 10px;font-size:12px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2,#33455a);background:var(--dsw-alias-bg-layer-2,#1d2633);color:var(--dsw-alias-label-primary,#cdd7e0);cursor:pointer}
 .yh-ws-wsact.pri{background:var(--yh-ui-brand);border-color:var(--yh-ui-brand);color:var(--yh-ui-ondark)}
 .yh-ws-cmenu{position:fixed;z-index:99999;min-width:130px;background:var(--dsw-alias-bg-overlay,#1b2431);border:1px solid var(--dsw-alias-border-l2,#33455a);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.4);overflow:hidden;font-size:12.5px;color:var(--dsw-alias-label-primary,#d7e2ee)}
@@ -395,9 +404,31 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       }
       return parts
     }
-    function highlight(sql, engine) {
+    function highlight(sql, engine, breaks) {
       const color = { k: 'var(--yh-k)', f: 'var(--yh-f)', s: 'var(--yh-s)', p: 'var(--yh-p)', n: 'var(--yh-n)', i: 'var(--yh-i)', c: 'var(--yh-c)', x: 'var(--yh-x)' }
-      return tokenize(sql, engine).map(function (tk, i) { return h('span', { key: i, style: { color: color[tk[0]] || 'var(--yh-i)' } }, tk[1]) })
+      const parts = tokenize(sql, engine)
+      const colorOf = function (kind) { return color[kind] || 'var(--yh-i)' }
+      if (!breaks || !breaks.length) {
+        return parts.map(function (tk, i) { return h('span', { key: i, style: { color: colorOf(tk[0]) } }, tk[1]) })
+      }
+      // 按实测断点切分 token 并插 <br>（<br> 不带文本 → textContent 不变，查找高亮的偏移映射不受影响）
+      const out = []
+      let off = 0, bi = 0
+      for (let i = 0; i < parts.length; i++) {
+        const kind = parts[i][0], text = parts[i][1]
+        const end = off + text.length
+        let s = 0
+        while (bi < breaks.length && breaks[bi] <= end) {
+          const cut = breaks[bi] - off
+          if (cut > s && cut <= text.length) out.push(h('span', { key: 'k' + i + '_' + s, style: { color: colorOf(kind) } }, text.slice(s, cut)))
+          out.push(h('br', { key: 'b' + bi }))
+          s = cut
+          bi++
+        }
+        if (s < text.length) out.push(h('span', { key: 'k' + i + '_' + s, style: { color: colorOf(kind) } }, text.slice(s)))
+        off = end
+      }
+      return out
     }
 
     function makeStore() {
@@ -421,14 +452,13 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         // open=显示 findbox；showRep=展开替换行；q/rep=查找/替换文本；caseS/word/re=三开关；
         // pos=当前匹配锚点字符位（当前匹配=首个 start>=pos 的匹配，导航/替换时更新）；focusTick=请求聚焦输入框
         findBox: { open: false, showRep: false, q: '', rep: '', caseS: false, word: false, re: false, pos: 0, focusTick: 0 },
-        // ===== WORKSTATION: 便签/工作区/知识库 状态 =====
+        // ===== WORKSTATION: 便签 状态 =====
         noteModalFor: false, noteText: '',
         // ===== WORKSTATION: 通用对话框（自绘 confirm/input，替代 window.confirm/prompt）=====
         // { kind:'confirm'|'input', title, message, value?, okLabel?, onOk } —— onOk 收到输入值/true
         dlg: null,
         __colsLoading: false,
         wsTree: null, wsTreeLoaded: false,
-        kb: { tab: 'tables', q: '', rows: [], loaded: false, detail: null, detailName: '', src: 'sqlkb', tree: null, treeLoaded: false, open: {}, krows: [], ksearch: '' },
       }
     }
 
@@ -713,8 +743,8 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
     }
 
     // —— 轻量多光标（Cmd/Ctrl+点击 添加光标，输入/退格/回车/粘贴同步到所有光标）——
-    // 编辑器是等宽字体：13px/1.55 ui-monospace；行高 = 13*1.55 = 20.15px；padding 10px 12px
-    const ED_PAD_TOP = 10, ED_PAD_LEFT = 12, ED_LINE_H = 20.15
+    // 编辑器是等宽字体：13px/1.55 ui-monospace；行高 = 13*1.55 = 20.15px；padding 4px 4px 10px 4px
+    const ED_PAD_TOP = 4, ED_PAD_LEFT = 4, ED_PAD_RIGHT = 4, ED_PAD_BOTTOM = 10, ED_LINE_H = 20.15
     let _charW = 0
     function charW() {
       if (_charW > 0) return _charW
@@ -738,7 +768,131 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
     // ===== WORKSTATION: 软换行(wrap)下的视觉行计算 —— 等宽累积，usableW 为行可用像素宽 =====
     function usableWidthOf(ta) {
       if (!ta) return 400
-      return Math.max(60, (ta.clientWidth || 400) - 24)
+      return Math.max(60, (ta.clientWidth || 400) - ED_PAD_LEFT - ED_PAD_RIGHT)
+    }
+    // ===== WORKSTATION: textarea 真实软换行断点测量（治「选区/光标与所见文字错位」）=====
+    // 根因：Chrome 的 textarea 软换行与普通块(div/pre)换行并非同一套算法——CJK/引号/空格贴着
+    // 换行宽时两者会差 1~2 行（实测扫 101 档宽度有 6 档分叉），而选区/光标是 textarea 画的、
+    // 文字是覆盖层画的 → 从分叉行起整段错位。这里用与 textarea 同字体同宽的隐藏镜像 textarea
+    // 二分测出每个逻辑行的真实断点，覆盖层按断点插 <br> 强制同断行（<br> 不改变 textContent，
+    // 故查找高亮/偏移映射不受影响）。按「宽度+行文本」缓存，编辑时只重算改动的那一行。
+    let breakMirror = null
+    let breakMirrorSig = ''
+    const breakCache = new Map()
+    const BREAK_CACHE_MAX = 6000
+    const NO_BREAKS = []
+    // 镜像必须与 textarea 同字体/同换行参数；参数一变（首次挂载时样式可能还没生效）就重建并清缓存，
+    // 否则会一直用错的度量算出错的断点（表现为选区/文字仍然错位）。
+    function mirrorEnsure(ta) {
+      const cs = window.getComputedStyle(ta)
+      const sig = cs.font + '|' + cs.lineHeight + '|' + cs.letterSpacing + '|' + cs.wordSpacing + '|' + cs.wordBreak + '|' + cs.overflowWrap
+      if (breakMirror && breakMirror.isConnected && breakMirrorSig === sig) return breakMirror
+      const m = (breakMirror && breakMirror.isConnected) ? breakMirror : document.createElement('textarea')
+      m.setAttribute('aria-hidden', 'true')
+      m.tabIndex = -1
+      m.style.cssText = 'position:absolute;left:-99999px;top:0;height:0;padding:4px 4px 10px 4px;border:0;outline:none;resize:none;overflow:hidden;box-sizing:border-box;white-space:pre-wrap;'
+        + 'word-break:' + cs.wordBreak + ';overflow-wrap:' + cs.overflowWrap + ';'
+        + 'font:' + cs.font + ';letter-spacing:' + cs.letterSpacing + ';word-spacing:' + cs.wordSpacing + ';line-height:' + cs.lineHeight 
+      if (!m.isConnected) document.body.appendChild(m)
+      breakMirror = m
+      breakMirrorSig = sig
+      breakCache.clear()
+      return m
+    }
+    // 镜像里该文本占几个视觉行（height:0 + overflow:hidden 时 scrollHeight 即内容高 + 上下 padding）
+    function mirrorRows(m, text) {
+      m.value = text
+      return Math.max(1, Math.round((m.scrollHeight - ED_PAD_TOP - ED_PAD_BOTTOM) / ED_LINE_H))
+    }
+    // 单个逻辑行的段末偏移数组（最后一项 = text.length）。
+    // 关键：每次都以「行首起的前缀」测量（不从中间切片）——切片测得的行数之和会小于整行行数
+    // （实测 2.sql 逐段 177 行 vs 整段 218 行），前缀测量与整行/textarea 一致。
+    function lineBreakOffsets(m, text) {
+      const n = text.length
+      if (!n) return [0]
+      const rowsAt = function (k) { return mirrorRows(m, text.slice(0, k)) }
+      const total = rowsAt(n)
+      const out = []
+      let prev = 0
+      for (let r = 1; r < total; r++) {
+        // 最小的 k 使「前 k 个字符」占 r+1 行 → 第 r 行实际结束于 k-1（k-1 是放到下一行的首个字符）
+        let lo = prev + 1, hi = n, best = n
+        while (lo <= hi) {
+          const mid = (lo + hi) >> 1
+          if (rowsAt(mid) >= r + 1) { best = mid; hi = mid - 1 } else lo = mid + 1
+        }
+        const end = Math.max(prev + 1, best - 1)
+        out.push(end)
+        prev = end
+      }
+      out.push(n)
+      return out
+    }
+    // 全 SQL 的软换行断点（每个新视觉行的起始字符偏移，升序）
+    function measureSoftBreaks(sql, ta) {
+      const s = String(sql || '')
+      if (!s || !ta || s.length > 300000) return NO_BREAKS
+      const width = ta.clientWidth || 0
+      if (!width) return NO_BREAKS
+      const m = mirrorEnsure(ta)
+      m.style.width = width + 'px'
+      const breaks = []
+      const lines = s.split('\n')
+      let off = 0
+      for (let i = 0; i < lines.length; i++) {
+        const ln = lines[i]
+        if (ln) {
+          const key = width + '\u0000' + ln
+          let segs = breakCache.get(key)
+          if (!segs) {
+            segs = lineBreakOffsets(m, ln)
+            if (breakCache.size >= BREAK_CACHE_MAX) breakCache.clear()
+            breakCache.set(key, segs)
+          }
+          for (let k = 0; k < segs.length - 1; k++) breaks.push(off + segs[k])
+        }
+        off += ln.length + 1
+      }
+      // SQL 以 \n 结尾时 textarea 会多显示一个空行（光标行），覆盖层补一个尾部 <br>（无文本，textContent 不变）
+      if (s.length && s.charAt(s.length - 1) === '\n') breaks.push(s.length)
+      return breaks.length ? breaks : NO_BREAKS
+    }
+    // 由断点推出每逻辑行的物理行信息（形状与 visualRowsOf 一致，供行号/光标行使用）
+    function rowsFromBreaks(sql, breaks) {
+      const lines = String(sql || '').split('\n')
+      const bks = breaks || NO_BREAKS
+      const rows = []
+      let phys = 0, bi = 0, off = 0
+      for (let li = 0; li < lines.length; li++) {
+        const ln = lines[li]
+        const end = off + ln.length
+        let segs = 1
+        while (bi < bks.length && bks[bi] <= end) { bi++; segs++ }
+        rows.push({ lineIdx: li, physStart: phys, physLen: segs, text: ln })
+        phys += segs
+        off = end + 1
+      }
+      return { rows: rows, totalPhys: phys }
+    }
+    // 某字符偏移所在的物理行序号（0-based）
+    function physRowOfOffset(sql, breaks, pos) {
+      const lines = String(sql || '').split('\n')
+      const bks = breaks || NO_BREAKS
+      let row = 0, off = 0, bi = 0
+      for (let li = 0; li < lines.length; li++) {
+        const end = off + lines[li].length
+        const startBi = bi
+        let segs = 1
+        while (bi < bks.length && bks[bi] <= end) { bi++; segs++ }
+        if (pos <= end) {
+          let inner = 0
+          for (let k = startBi; k < bi; k++) if (bks[k] <= pos) inner++
+          return row + inner
+        }
+        row += segs
+        off = end + 1
+      }
+      return row
     }
     // 返回每逻辑行的物理行信息：{rows:[{lineIdx,physStart,physLen,text}], totalPhys}
     function visualRowsOf(sql, usableW) {
@@ -1014,15 +1168,31 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         uploadPanelState(st, sid)
       }
     }
+    // ===== WORKSTATION: AppFrame 根元素定位（唯一入口，勿再各自 querySelector）=====
+    // frame 的 class 带 css-module 哈希不可依赖；旧写法靠状态属性
+    // [data-sidebar-collapsed]/[data-details-collapsed]/[data-dragging] 反查，但
+    // **「侧栏展开 + 右列展开 + 未拖动」时三个属性全都不存在** → 找不到 frame →
+    // .yh-ws-frame 打不上 → 三列重排与分隔条全失效（1680 宽视口实测复现：OLAP 面板
+    // 落回最右列）。改为优先用结构稳定的 [data-shell-overlay]（overlay 层恒为 frame
+    // 的直接子元素）反推父元素，属性查询只作最后兜底。
+    function wsFrameEl() {
+      let fr = document.querySelector('.yh-ws-frame')
+      if (fr) return fr
+      const ov = document.querySelector('[data-shell-overlay]')
+      fr = (ov && ov.parentElement) || document.querySelector('[data-sidebar-collapsed],[data-rightbar-collapsed],[data-dragging]')
+      if (fr && fr.classList && !fr.classList.contains('yh-ws-frame')) fr.classList.add('yh-ws-frame')
+      return fr
+    }
     function wsApplyLayout() {
       try {
-        const fr = document.querySelector('[data-sidebar-collapsed],[data-details-collapsed],[data-dragging]')
-        if (fr && fr.classList && !fr.classList.contains('yh-ws-frame')) fr.classList.add('yh-ws-frame')
-        if (layout && typeof layout.openDetails === 'function') layout.openDetails()
+        wsFrameEl()
+        // 新版 DSH 把 details() 改名为 rightbar（API：openRightbar(track, fullscreen)），
+        // 旧 openDetails 已不存在 —— 面板所在列需由占用者自己申报「已展开 + 占位」。
+        if (layout && typeof layout.openRightbar === 'function') layout.openRightbar(true, false)
         // 工作站默认收起侧栏（保留 56px 展开条，点开可看会话列表，与 dsh web 一致）。
         // 只在检测到展开态时收起一次，用户手动展开后不再干预。
         if (!wsSidebarCollapsedDone && layout && typeof layout.toggleSidebar === 'function') {
-          const f0 = document.querySelector('.yh-ws-frame')
+          const f0 = wsFrameEl()
           if (f0 && !f0.hasAttribute('data-sidebar-collapsed') && !f0.hasAttribute('data-dragging')) {
             wsSidebarCollapsedDone = true
             try { layout.toggleSidebar() } catch (e2) { /* ignore */ }
@@ -1053,11 +1223,15 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         try { wst = wsSvc.list ? wsSvc.list.getSnapshot() : null } catch (e2) { /* ignore */ }
         const items = (wst && wst.items) || []
         if (items.length === 0) return // 工作区列表还没加载好，下轮再试
+        // ===== WORKSTATION: 新版 DSH 把 connectWorkspace/startSession 从 workspaces 服务
+        // 挪到了 uiWorkspace（UI 能力服务）；workspaces 只剩 create/rename/delete 等纯命令，
+        // list 快照仍在。旧写法 wsSvc.connectWorkspace 会静默走不到，导致新会话建不出来。=====
+        const uiWs = ctx.get('uiWorkspace')
         wsAutoStartIssued = true
         // connectWorkspace 返回绑定到工作区的会话 id（reuse 空白会话或新建）
-        if (typeof wsSvc.connectWorkspace === 'function') {
+        if (uiWs && typeof uiWs.connectWorkspace === 'function') {
           try {
-            wsSvc.connectWorkspace(items[0].workspaceId).then(function (sid) {
+            uiWs.connectWorkspace(items[0].workspaceId).then(function (sid) {
               if (sid && typeof sessionsSvc.open === 'function') {
                 try { sessionsSvc.open(sid) } catch (e3) { /* ignore */ }
               }
@@ -1065,8 +1239,8 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
               if (wsAutoOpenTimer) { clearInterval(wsAutoOpenTimer); wsAutoOpenTimer = null }
             }).catch(function () { wsAutoStartIssued = false })
           } catch (e) { wsAutoStartIssued = false }
-        } else if (typeof wsSvc.startSession === 'function') {
-          try { wsSvc.startSession(items[0].workspaceId) } catch (e) { wsAutoStartIssued = false }
+        } else if (uiWs && typeof uiWs.startSession === 'function') {
+          try { uiWs.startSession(items[0].workspaceId) } catch (e) { wsAutoStartIssued = false }
         }
         return
       }
@@ -1117,7 +1291,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
     // （1 个空 Tab1 + 清 per-session 文件），无论 DSH 复用哪个会话，面板都是全新的。
     function wsPatchSidebarNewSession() {
       try {
-        const frame = document.querySelector('.yh-ws-frame')
+        const frame = wsFrameEl()
         if (!frame) return
         frame.addEventListener('click', function (e) {
           const t = e.target
@@ -1644,113 +1818,6 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         menuBox)
     }
 
-    // ===== WORKSTATION: 知识库 tab（sqlkb 只读浏览）=====
-    function SqlkbTree(props) {
-      const { st, sid, bump } = props
-      const kb = st.kb
-      const kindKey = { tables: '表', examples: '示例', pitfalls: '坑点' }
-      const srcRow = h('div', { className: 'yh-ws-ktools' },
-        h('button', { className: kb.src === 'sqlkb' ? 'pri' : '', onClick: function () { kb.src = 'sqlkb'; kb.detail = null; bump() } }, 'SQL知识'),
-        h('button', { className: kb.src === 'kb' ? 'pri' : '', onClick: function () { kb.src = 'kb'; kb.detail = null; if (!kb.treeLoaded) kbLoadTree(); bump() } }, '业务知识'))
-      const loadList = function (force) {
-        kb.loaded = false; kb.detail = null; bump()
-        callHost('ws.sqlkb.list', { kind: kb.tab }).then(function (r) {
-          if (r && r.ok) { kb.rows = (r[kb.tab] || []).slice(); kb.loaded = true; bump() }
-        })
-      }
-      // ===== WORKSTATION: kb 加载/树渲染辅助 =====
-      const kbLoadTree = function () {
-        kb.treeLoaded = false; bump()
-        callHost('ws.kb.tree', {}).then(function (r) {
-          if (r && r.ok) { kb.tree = r; kb.treeLoaded = true; bump() }
-        })
-      }
-      const kbOpenDetail = function (name) {
-        kb.detailName = name; bump()
-        callHost('ws.kb.get', { name: name }).then(function (r) { if (r && r.ok) { kb.detail = r; bump() } else showToast(st, '读取失败') })
-      }
-      const kbSearch = function (force) {
-        const q = (kb.ksearch || '').trim()
-        kb.detail = null
-        if (!q) { kb.krows = []; bump(); return }
-        kb.ksearching = true; bump()
-        callHost('ws.kb.search', { q: q }).then(function (r) { if (r && r.ok) { kb.krows = (r.rows || []).slice(); kb.ksearching = false; bump() } })
-      }
-      const renderDir = function (dir, depth) {
-        return h('div', { key: dir.path },
-          h('div', { className: 'yh-olap-node', style: { paddingLeft: 6 + depth * 12, fontWeight: 600, color: 'var(--dsw-alias-label-secondary,#7a8ba0)' }, onClick: function () { kb.open[dir.path] = !kb.open[dir.path]; bump() } },
-            h('span', { className: 'tw' }, ''), h('span', { className: 'yh-olap-ic' }, kb.open[dir.path] ? '▾' : '▸'),
-            h('span', { className: 'yh-olap-fname' }, dir.title || dir.path),
-            dir.description ? h('span', { className: 'yh-olap-fcmt', title: dir.description }, '…') : null),
-          (kb.open[dir.path] ? (dir.children || []).map(function (c) {
-            return c.type === 'dir' ? renderDir(c, depth + 1) : h('div', {
-              key: c.name, className: 'yh-olap-node', style: { paddingLeft: 6 + (depth + 1) * 12 }, title: (c.summary || '') + (c.tags ? '  [' + c.tags + ']' : ''),
-              onClick: function () { kbOpenDetail(c.name) },
-            }, h('span', { className: 'tw' }, ''), h('span', { className: 'yh-olap-ic' }, '📄'),
-              h('span', { className: 'yh-olap-fname' }, c.name),
-              c.summary ? h('span', { className: 'yh-olap-fcmt' }, (c.summary || '').slice(0, 14)) : null)
-          }) : null))
-      }
-      // 详情视图（sqlkb 与 kb 共用）
-      if (kb.detail) {
-        const d = kb.detail
-        const fm = d.frontmatter || {}
-        const head = Object.keys(fm).filter(function (k) { return k !== 'body' }).map(function (k) { return k + ': ' + fm[k] }).join('\n')
-        return h('div', { className: 'yh-olap-ltree' },
-          h('div', { className: 'yh-ws-back', onClick: function () { kb.detail = null; kb.detailName = ''; bump() } }, '‹ 返回'),
-          h('pre', { className: 'yh-ws-kbg' }, (head ? head + '\n\n' : '') + (d.body || '')))
-      }
-      // kb（业务知识）模式
-      if (kb.src === 'kb') {
-        return h('div', { className: 'yh-olap-ltree' },
-          srcRow,
-          h('div', { className: 'yh-ws-ktools' },
-            h('input', { value: kb.ksearch || '', placeholder: '搜索业务知识…', onChange: function (e) { kb.ksearch = e.target.value; if (kb.__ts) clearTimeout(kb.__ts); kb.__ts = setTimeout(function () { kbSearch(true) }, 350) } }),
-            h('button', { className: 'pri', onClick: function () { kb.ksearch ? kbSearch(true) : kbLoadTree() } }, kb.ksearch ? '搜索' : '刷新')),
-          !(kb.ksearch || '').trim() ? (
-            kb.treeLoaded && kb.tree ? h('div', null, (kb.tree.categories || []).map(function (c) { return renderDir(c, 0) }))
-              : h('div', { className: 'yh-olap-hint' }, kb.treeLoaded === false && !kb.tree ? '加载中…' : '无分类')) :
-            (kb.krows && kb.krows.length ? h('div', null, kb.krows.map(function (r) {
-              return h('div', { key: r.name, className: 'yh-olap-node', onClick: function () { kbOpenDetail(r.name) }, title: (r.summary || '') + (r.tags ? '  [' + r.tags + ']' : '') },
-                h('span', { className: 'tw' }, ''), h('span', { className: 'yh-olap-ic' }, '📄'),
-                h('span', { className: 'yh-olap-fname' }, r.name),
-                h('span', { className: 'yh-olap-fcmt' }, (r.category || '').split('/').pop()))
-            })) : h('div', { className: 'yh-olap-hint' }, '无结果')))
-      }
-      // sqlkb 模式（原逻辑）
-      react.useEffect(function () { if (kb.src === 'sqlkb' && !kb.loaded && !kb.rows.length) loadList(false) }, [])
-      const q = (kb.q || '').trim().toLowerCase()
-      const rows = q ? kb.rows.filter(function (row) {
-        return (row.name || '').toLowerCase().indexOf(q) !== -1
-          || (row.purpose || '').toLowerCase().indexOf(q) !== -1
-          || (row.tags || '').toLowerCase().indexOf(q) !== -1
-          || (row.type || '').toLowerCase().indexOf(q) !== -1
-      }) : kb.rows
-      if (!kb.loaded && !kb.rows.length) {
-        return h('div', { className: 'yh-olap-ltree' }, srcRow, h('div', { className: 'yh-olap-hint' }, '加载中…'))
-      }
-      return h('div', { className: 'yh-olap-ltree' },
-        srcRow,
-        h('div', { className: 'yh-ws-ktools' },
-          h('input', { value: kb.q, placeholder: '搜索表/示例/坑点…', onChange: function (e) { kb.q = e.target.value; bump() } }),
-          h('button', { className: 'pri', onClick: function () { loadList(true) } }, '刷新')),
-        h('div', { className: 'yh-ws-ktools' },
-          ['tables', 'examples', 'pitfalls'].map(function (k) {
-            return h('button', { key: k, className: kb.tab === k ? 'pri' : '', onClick: function () { kb.tab = k; kb.q = ''; kb.rows = []; loadList(false) } }, kindKey[k])
-          })),
-        h('div', { className: 'yh-olap-hint' }, (kindKey[kb.tab]) + ' · ' + rows.length + ' 条' + (q ? '（已过滤）' : '')),
-        rows.length ? rows.map(function (row) {
-          const desc = row.purpose || row.type || ''
-          return h('div', {
-            key: row.name, className: 'yh-olap-node', title: (row.purpose || '') + (row.tags ? '  [' + row.tags + ']' : ''),
-            onClick: function () { kb.detailName = row.name; bump(); callHost('ws.sqlkb.get', { id: row.name }).then(function (r) { if (r && r.ok) { kb.detail = r; bump() } else showToast(st, '读取失败') }) },
-          },
-            h('span', { className: 'tw' }, ''), h('span', { className: 'yh-olap-ic' }, kb.tab === 'tables' ? '▤' : (kb.tab === 'examples' ? '❯' : '⚠')),
-            h('span', { className: 'yh-olap-fname' }, row.name),
-            h('span', { className: 'yh-olap-fcmt' }, desc))
-        }) : h('div', { className: 'yh-olap-hint' }, '无结果'))
-    }
-
     // ===== WORKSTATION: 通用对话框（自绘 confirm/input，替代 window.confirm/prompt）=====
     // 状态在 st.dlg：{ kind:'confirm'|'input', title, message, value?, okLabel?, onOk }
     // onOk：confirm 收到 true（点确定）；input 收到输入值（可为空串）。返回 false 不关闭。
@@ -1807,7 +1874,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
     }
 
     // ===== WORKSTATION: 对话区宽度可调分隔条 =====
-    // AppFrame 内建手柄定位依赖原始列序（sidebar|center|details），与工作站
+    // AppFrame 内建手柄定位依赖原始列序（sidebar|center|rightbar），与工作站
     // 重排后的视觉边界（OLAP 中 / 会话右）不对应，故自建分隔条挂到 shell.overlay
     // 层（覆盖全 frame、子元素 pointer-events:auto）。拖拽时把 --yh-ws-cols
     // 从默认 fr 比例写成 OLAP 像素宽，会话区自动吸走剩余空间；宽度持久化到 localStorage。
@@ -1828,7 +1895,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
           return w
         }
         const sync = function () {
-          const fr = document.querySelector('.yh-ws-frame')
+          const fr = wsFrameEl()
           if (!fr || !el) return false
           const sw = sidebarW(fr)
           // sidebar 展开时抢占横向空间：把 OLAP 固定宽（用户拖出的偏好）钳到
@@ -1856,7 +1923,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         const applySaved = function () {
           let saved = 0
           try { saved = Number(localStorage.getItem('yh_ws_olap_w') || '') } catch (e) { /* ignore */ }
-          const fr = document.querySelector('.yh-ws-frame')
+          const fr = wsFrameEl()
           if (saved > 300 && fr) fr.style.setProperty('--yh-ws-cols', saved + 'px minmax(340px,1fr)')
         }
         applySaved()
@@ -1871,14 +1938,14 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
           }
         }, 500)
         const ro = new ResizeObserver(function () {
-          const fr = document.querySelector('.yh-ws-frame')
+          const fr = wsFrameEl()
           if (fr) sync()
         })
-        const fr0 = document.querySelector('.yh-ws-frame')
+        const fr0 = wsFrameEl()
         if (fr0) ro.observe(fr0)
         else {
           const iv2 = setInterval(function () {
-            const fr = document.querySelector('.yh-ws-frame')
+            const fr = wsFrameEl()
             if (fr) { ro.observe(fr); clearInterval(iv2) }
           }, 400)
           setTimeout(function () { clearInterval(iv2) }, 40000)
@@ -1886,7 +1953,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         // sidebar 展开/收起只改 AppFrame 的 inline 列宽，fr 自身尺寸不变 → RO 不触发；
         // 用 MutationObserver 监听 data-sidebar-collapsed 变化补一次同步。
         let mo = null
-        const moTarget = document.querySelector('.yh-ws-frame')
+        const moTarget = wsFrameEl()
         if (moTarget && typeof MutationObserver === 'function') {
           mo = new MutationObserver(function () { sync() })
           mo.observe(moTarget, { attributes: true, attributeFilter: ['data-sidebar-collapsed'] })
@@ -1896,7 +1963,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       }, [])
       const onDown = function (e) {
         e.preventDefault()
-        const fr = document.querySelector('.yh-ws-frame')
+        const fr = wsFrameEl()
         const el = ref.current
         if (!fr || !el) return
         const frR = fr.getBoundingClientRect()
@@ -1947,11 +2014,9 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       return h('div', { className: 'yh-olap-left', style: { width: (st.leftWidth || 210) + 'px' } },
         h('div', { className: 'yh-olap-tabs2' },
           h('span', { className: st.leftTab === 'schema' ? 'on' : '', onClick: function () { st.leftTab = 'schema'; bump() } }, '库表'),
-          h('span', { className: st.leftTab === 'collect' ? 'on' : '', onClick: function () { st.leftTab = 'collect'; loadCollect(st, sid, bump) } }, '收藏'),
-          h('span', { className: st.leftTab === 'sqlkb' ? 'on' : '', onClick: function () { st.leftTab = 'sqlkb'; bump() } }, '知识库')),
+          h('span', { className: st.leftTab === 'collect' ? 'on' : '', onClick: function () { st.leftTab = 'collect'; loadCollect(st, sid, bump) } }, '收藏')),
         st.leftTab === 'schema' ? h(SchemaTree, { st: st, sid: sid, bump: bump })
-          : st.leftTab === 'collect' ? h(CollectTree, { st: st, sid: sid, bump: bump })
-            : h(SqlkbTree, { st: st, sid: sid, bump: bump }),
+          : h(CollectTree, { st: st, sid: sid, bump: bump }),
         h('button', { className: 'yh-olap-coltoggle collapse', onClick: function () { st.leftCollapsed = true; bump() }, title: '收起左栏' }, '◀'),
         h('div', { className: 'yh-olap-resizer', onMouseDown: startDrag, title: '拖动调整宽度' }))
     }
@@ -1960,7 +2025,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
     function caretPos(ta) {
       const before = ta.value.slice(0, ta.selectionStart)
       const mirror = document.createElement('div')
-      mirror.style.cssText = 'position:absolute;visibility:hidden;white-space:pre-wrap;word-break:break-all;overflow:hidden;font:inherit;top:0;left:0;padding:10px 12px;box-sizing:border-box;'
+      mirror.style.cssText = 'position:absolute;visibility:hidden;white-space:pre-wrap;word-break:break-all;overflow:hidden;font:inherit;top:0;left:0;padding:4px 4px 10px 4px;box-sizing:border-box;'
       mirror.style.width = (ta.clientWidth || 400) + 'px'
       mirror.textContent = before
       const marker = document.createElement('span')
@@ -2044,9 +2109,9 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       const parts = raw.split('.').map(function (p) { return p.trim() })
       return { parts: parts, endedWithDot: raw.charAt(raw.length - 1) === '.' }
     }
-    // 匹配优先级：精确命中 > 以输入开头 > 中间包含；同优先级按名称排序
-    // preferOrder（可选）：上下文期望的类型（如 ['sch','tbl'] 在 from 后、['col','f'] 在 select 后）
-    // 这些类型提到最前（依次 rank 0..），其余按 kindRank 接后。无 prefer 时保持默认：函数/关键字 > 库 > 表 > 字段
+    // 匹配优先级：精确命中 > 以输入开头 > 中间包含；同优先级按类型/长度/名称排序
+    // preferOrder（可选）：上下文期望的类型（如 ['sch','tbl'] 在 from 后、['k','col','f'] 在 select 后）
+    // 这些类型提到最前（依次 rank 0..），其余按 kindRank 接后。无 prefer 时默认：关键字 > 函数 > 库 > 表 > 字段
     function rankMatches(items, w, preferOrder) {
       const lw = String(w || '').toLowerCase()
       const score = function (text) {
@@ -2069,10 +2134,13 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         .map(function (it) { return { it: it, sc: score(it.text), kr: rankOf(it.kind) } })
         // 过滤：已完整输入的候选(sc=0)不再补全；未匹配(3)不展示
         .filter(function (x) { return x.sc > 0 && x.sc < 3 })
-        // 排序：类型优先级 > 匹配度 > 长度短的优先（更接近输入） > 名称
+        // ===== WORKSTATION: 排序 = 匹配度 > 类型优先级 > 长度 > 名称 =====
+        // 原为「类型 > 匹配度」：一旦关键字被提到最前，前缀 1 个字符时海量「包含命中(sc=2)」
+        // 的关键字会把 40 条窗口占满，把「前缀命中(sc=1)」的字段挤出可见区。改匹配度优先后：
+        // 同一档次内仍按类型排（select 语境 = 关键字 > 字段 > 函数），跨档次则强匹配永远在前。
         .sort(function (a, b) {
-          return a.kr - b.kr
-            || a.sc - b.sc
+          return a.sc - b.sc
+            || a.kr - b.kr
             || a.it.text.length - b.it.text.length
             || String(a.it.text).localeCompare(String(b.it.text))
         })
@@ -2080,7 +2148,11 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
     }
 
     // ===== WORKSTATION: 根据光标前 SQL 语法位置推断期望补全类型 =====
-    // from/join/into/update 后 → 库/表；select/where/on/having/group by/order by 后 → 字段/函数
+    // from/join/into/update 后 → 库/表；select/where/on/having/group by/order by 后 → 关键字/字段/函数
+    // ===== WORKSTATION: 关键字恒在字段之前（用户要求）=====
+    // 默认 kindRank 本就是 关键字(0) < 字段(4)，但「字段上下文」的偏好列表原为 ['col','f']，
+    // 把字段提到最前后关键字反被压到字段之下（实测 select 后输 "s"：字段 #0、关键字 #7）。
+    // 故把 'k' 放进偏好列表首位：关键字 > 字段 > 函数，其余类型相对顺序不变。
     function complPrefer(sql) {
       const m = String(sql || '')
       // 去掉末尾正在输入的词与尾部空白，分析到「输入词前」的语法位置
@@ -2092,7 +2164,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       if (!ms.length) return null
       const kw = String(ms[ms.length - 1][0]).trim().toLowerCase()
       if (kw === 'from' || kw.indexOf('join') !== -1 || kw === 'into' || kw === 'update' || kw === 'values') return ['sch', 'tbl']
-      return ['col', 'f'] // select/where/on/having/group by/order by/set 等
+      return ['k', 'col', 'f'] // select/where/on/having/group by/order by/set 等
     }
 
     // onlyKeys：可选的「限定表集合」（Set<"schemaId/tableId">）。
@@ -2150,7 +2222,13 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       const [compl, setCompl] = react.useState(null)
       // ===== WORKSTATION: 光标位置（渲染当前行浅灰背景）=====
       const [caret, setCaret] = react.useState(0)
-      const syncCaret = function () { const t = taRef.current; if (t) setCaret(t.selectionStart) }
+      const syncCaret = function () {
+        const t = taRef.current
+        if (!t) return
+        setCaret(t.selectionStart)
+        const s2 = t.selectionStart, e2 = t.selectionEnd
+        setSelRange(function (p) { return (p.s === s2 && p.e === e2) ? p : { s: s2, e: e2 } })
+      }
       const composingRef = react.useRef(false) // 输入法 composition 进行中（中文输入法打英文时 Enter 是确认候选，不应用补全）
       // ===== WORKSTATION: 补全列表防残留 —— 弹出后 3 秒无交互自动关闭（无输入时不会自己一直挂着）=====
       const complTimer = react.useRef(null)
@@ -2164,6 +2242,14 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       // 存这里驱动高亮 div（取代按字符宽估算的 matchRects，CJK/软换行精确对齐）=====
       const [findRects, setFindRects] = react.useState(null)
       const [resizeTick, setResizeTick] = react.useState(0)
+      // ===== WORKSTATION: textarea 真实软换行断点（见 measureSoftBreaks）。覆盖层按它插 <br>，
+      // 保证「所见文字」= textarea 的真实排版 → 原生选区/光标与文字不再错位。=====
+      const [softBreaks, setSoftBreaks] = react.useState(NO_BREAKS)
+      // ===== WORKSTATION: 自绘选区矩形。原生选区由 textarea 画，而 div 覆盖层在边界行可能与
+      // textarea 折行差一行（亚像素差异，双向都会出现）→ 改为按覆盖层实测矩形自己画高亮，
+      // 保证「高亮永远贴着你看得见的字」。仅在量到矩形时把原生选区底色设透明，量不到回落原生。=====
+      const [selRange, setSelRange] = react.useState({ s: 0, e: 0 })
+      const [selRects, setSelRects] = react.useState(null)
       // ===== WORKSTATION: 查找替换按钮悬停提示（原生 title 延迟久且样式不统一，自绘即时气泡）=====
       const [tip, setTip] = react.useState(null) // { x, y, text }（fixed 坐标）
       const tipOn = function (e, text) {
@@ -2209,9 +2295,9 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
 
       const tab = activeTab(st)
       const sql = tab ? tab.sql : ''
-      // ===== WORKSTATION: 行号按视觉行（软换行时续行空位占一行，行号只在逻辑行首）=====
-      const edW = usableWidthOf(taRef.current)
-      const vinfo = sql ? visualRowsOf(sql, edW) : null
+      // ===== WORKSTATION: 行号按视觉行（软换行时续行空位占一行，行号只在逻辑行首）。
+      // 用实测断点（softBreaks）而非字符宽估算，保证行号与覆盖层/textarea 的真实换行一致。=====
+      const vinfo = sql ? rowsFromBreaks(sql, softBreaks) : null
       let gutterText = ''
       if (vinfo) {
         const nr = String(vinfo.totalPhys).length
@@ -2229,8 +2315,10 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         if (!ta) return
         const st2 = ta.scrollTop, sl2 = ta.scrollLeft
         if (hi) {
-          // ===== WORKSTATION: hl 总宽 = textarea clientWidth（含 padding）→ 两者文字区同宽，换行点一致。
-          // 注：textarea 的垂直滚动条占去内容宽（clientWidth 含滚动条区），故直接对齐 clientWidth 即可 =====
+          // ===== WORKSTATION: 覆盖层宽度 = textarea clientWidth + 几像素余量。=====
+          // 原因：镜像里量出来「刚好放得下」的分段，在覆盖层里可能因亚像素取整再折一行
+          // （实测用户 DPR=2 下 brs=7、镜像 85 行、覆盖层 86 行），多折的那一行会让其下所有
+          // 文字与选区整段错位。断点已由 <br> 固定，多一点宽度只影响「行尾能画到哪」，不会再折行。=====
           const tw = ta.clientWidth || 0
           if (tw) hi.style.width = tw + 'px' // 无条件设置（确保生效）
           hi.style.transform = 'translate(' + (-sl2) + 'px,' + (-st2) + 'px)'
@@ -2251,6 +2339,69 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         const ro = new ResizeObserver(function () { syncHl(); setResizeTick(function (t) { return t + 1 }) })
         ro.observe(ta)
         return function () { try { ro.disconnect() } catch (e) { /* ignore */ } }
+      }, [])
+
+      // ===== WORKSTATION: 测量 textarea 的真实软换行断点（SQL 变化/宽度变化时重算；按行缓存，
+      // 编辑时只有改动的那一行会重新二分）。放在 useLayoutEffect：必须等 textarea 拿到最终宽度。
+      // 结果与上次相同则不改 state，避免多余重渲染。=====
+      // ===== WORKSTATION: 按覆盖层实测选区矩形（坐标相对 hl-inner，随内容滚动，无需 scroll 依赖）。
+      // 折叠选区（光标）直接跳过，零开销。
+      // 关键：getClientRects 返回小数坐标，直接绝对定位会把半透明底色的边缘抗锯齿成毛边；
+      // 这里把 left/top/right/bottom 各自吸附到设备像素（dpr 分之一），并把相邻行的上下边
+      // 用同一套吸附值（bottom 与下一行 top 同值）→ 边缘干净、行间无缝。=====
+      react.useLayoutEffect(function () {
+        const inner = hlInnerRef.current, ta = taRef.current
+        const s2 = Math.min(selRange.s, selRange.e), e2 = Math.max(selRange.s, selRange.e)
+        if (!inner || !ta || e2 <= s2) { setSelRects(null); return }
+        const rects = measureRectsIn(inner, [{ start: s2, end: e2 }], -1)
+        if (!rects || !rects.length) { setSelRects(null); return }
+        // Range 的矩形是按 span 分段返回的（实测 4252 字 → 3652 个矩形），且高度只有字形高
+        // （15px < 行高 20.15px）→ 逐段画会有行内接缝与行间条纹（用户看到「锯齿感」）。
+        // 这里按物理行合并成「一行一个矩形」，上下边取整行盒（行盒相邻 → 无缝），
+        // 并把 left/right/top/bottom 吸附到设备像素（半透明底色在小数坐标会被抗锯齿成毛边）。
+        const byRow = new Map()
+        for (let i = 0; i < rects.length; i++) {
+          const r = rects[i]
+          const row = Math.round((r.top - ED_PAD_TOP) / ED_LINE_H)
+          const hit = byRow.get(row)
+          if (!hit) byRow.set(row, { l: r.left, r: r.left + r.width })
+          else { if (r.left < hit.l) hit.l = r.left; if (r.left + r.width > hit.r) hit.r = r.left + r.width }
+        }
+        const dpr = window.devicePixelRatio || 1
+        const q = function (v) { return Math.round(v * dpr) / dpr }
+        const snapped = []
+        byRow.forEach(function (v, row) {
+          const y1 = q(ED_PAD_TOP + row * ED_LINE_H), y2 = q(ED_PAD_TOP + (row + 1) * ED_LINE_H)
+          const x1 = q(v.l), x2 = q(v.r)
+          snapped.push({ left: x1, top: y1, width: Math.max(1, x2 - x1), height: Math.max(1, y2 - y1) })
+        })
+        setSelRects(snapped)
+      }, [selRange.s, selRange.e, sql, resizeTick])
+
+      react.useLayoutEffect(function () {
+        const b = measureSoftBreaks(sql, taRef.current)
+        setSoftBreaks(function (prev) {
+          if (prev === b) return prev
+          if (prev.length === b.length) {
+            let same = true
+            for (let i = 0; i < b.length; i++) { if (prev[i] !== b[i]) { same = false; break } }
+            if (same) return prev
+          }
+          return b
+        })
+      }, [sql, resizeTick])
+
+      // ===== WORKSTATION: 选区跟踪兜底 —— React 的 onSelect 是合成事件（只由 mousedown/keyup 等触发），
+      // 程序化选区与**拖选过程中的 selectionchange** 不会走它；这里直接监听 document 的
+      // selectionchange（聚焦在编辑器时），保证拖选时自绘高亮实时跟随。=====
+      react.useEffect(function () {
+        const onSel = function () {
+          const t = taRef.current
+          if (!t || document.activeElement !== t) return
+          syncCaret()
+        }
+        document.addEventListener('selectionchange', onSel)
+        return function () { try { document.removeEventListener('selectionchange', onSel) } catch (e) { /* ignore */ } }
       }, [])
 
       const applyCompletion = function (item) {
@@ -2860,10 +3011,10 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         setFindRects(out.length ? out : null)
       }, [fb.open, fb.q, fb.caseS, fb.word, fb.re, fb.pos, sql, resizeTick])
 
-      // ===== WORKSTATION: 当前光标所在物理行浅灰背景 top（软换行折行后高亮光标所在的那段）=====
+      // ===== WORKSTATION: 当前光标所在物理行浅灰背景 top（用实测断点行号，与文字排版一致）=====
       const curTop = sql ? (function () {
         const pos = Math.max(0, Math.min(caret, sql.length))
-        return cursorXY(sql, pos, usableWidthOf(taRef.current)).y - 3
+        return ED_PAD_TOP + physRowOfOffset(sql, softBreaks, pos) * ED_LINE_H
       })() : 0
 
       const mcurMarkers = (st.mcursors || []).map(function (p) {
@@ -2881,8 +3032,11 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
               (findRects && findRects.length) ? findRects.map(function (x, i) {
                 return h('div', { key: 'fh' + i, className: 'yh-olap-findhit' + (x.cur ? ' cur' : ''), style: { left: x.left + 'px', top: x.top + 'px', width: x.width + 'px', height: x.height + 'px' } })
               }) : null,
-              highlight(sql, tab && tab.engine), ...mcurMarkers)),
-          h('textarea', { className: 'yh-olap-input', ref: taRef, value: sql, spellCheck: false, wrap: 'soft', onScroll: onScroll, onKeyDown: onKeyDown, onBeforeInput: onBeforeInput, onInput: onInput, onMouseDown: onMouseDown, onDoubleClick: onDblClickParen, onKeyUp: function () { syncCaret() }, onMouseUp: function () { syncCaret() }, onPaste: function () { markPaste() }, onContextMenu: onEdContextMenu, onCompositionStart: function () { composingRef.current = true }, onCompositionEnd: function () { composingRef.current = false }, onBlur: function () { if (st.mcursors && st.mcursors.length) { st.mcursors = []; bump() } timer.timeout(function () { setCompl(null); bump() }, 120) } })),
+              (selRects && selRects.length) ? selRects.map(function (x, i) {
+                return h('div', { key: 'sh' + i, className: 'yh-olap-selhit', style: { left: x.left + 'px', top: x.top + 'px', width: x.width + 'px', height: x.height + 'px' } })
+              }) : null,
+              highlight(sql, tab && tab.engine, softBreaks), ...mcurMarkers)),
+          h('textarea', { className: 'yh-olap-input' + (selRects && selRects.length ? ' yh-selown' : ''), ref: taRef, value: sql, spellCheck: false, wrap: 'soft', onSelect: function () { syncCaret() }, onScroll: onScroll, onKeyDown: onKeyDown, onBeforeInput: onBeforeInput, onInput: onInput, onMouseDown: onMouseDown, onDoubleClick: onDblClickParen, onKeyUp: function () { syncCaret() }, onMouseUp: function () { syncCaret() }, onPaste: function () { markPaste() }, onContextMenu: onEdContextMenu, onCompositionStart: function () { composingRef.current = true }, onCompositionEnd: function () { composingRef.current = false }, onBlur: function () { if (st.mcursors && st.mcursors.length) { st.mcursors = []; bump() } timer.timeout(function () { setCompl(null); bump() }, 120) } })),
         compl ? h('div', { className: 'yh-olap-complete', style: { left: compl.x, top: compl.y } },
           compl.list.map(function (it, i) {
             return h('div', { key: it.kind + it.text + i, className: i === compl.sel ? 'sel' : '', onMouseDown: function (e) { e.preventDefault(); applyCompletion(it) } },
@@ -3804,7 +3958,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
               h('div', { title: row.plainQueryText || '', style: { flex: '1 1 160px', minWidth: 0, fontFamily: 'monospace', fontSize: 11.5, color: 'var(--dsw-alias-label-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, String(row.plainQueryText || '').replace(/[\r\n\t]+/g, ' ')),
               h('span', { style: { display: 'inline-flex', gap: 4, alignItems: 'center', marginLeft: 'auto', flexShrink: 0 } },
                 h('button', { className: 'yh-olap-mini', onClick: function () { const tab = activeTab(st); tab.sql = row.plainQueryText || ''; tab.finish = ''; bump(); showToast(st, '已插入到编辑区') }, title: '把这条 SQL 覆盖到当前编辑区' }, '插入'),
-                h('button', { className: 'yh-olap-mini', onClick: function () { downloadBlob('olap.history.fast', { requestId: row.requestId }, function (msg) { showToast(st, msg) }) }, title: '快速下载（≤1000 条结果）' }, '快速下载'),
+                h('button', { className: 'yh-olap-mini', onClick: function () { downloadBlob('olap.history.fast', { requestId: row.requestId, engine: row.engine }, function (msg) { showToast(st, msg) }) }, title: '快速下载（≤1000 条结果）' }, '快速下载'),
                 h(HistoryDlBtn, { st: st, bump: bump, row: row }))))
         }) : h('div', { className: 'yh-olap-hint' }, '暂无历史'))
     }
@@ -4294,9 +4448,9 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
 
     function OlapPanel(props) {
       const propSid = props.sessionId || ''
-      // 面板跟随当前会话：DSH 的 details slot 在切换会话时不更新 sessionId（实测对话区已
-      // 切新会话、面板仍绑旧 store），用轮询 sessions 服务 current 兜底——新会话 = 面板
-      // 新状态（它的工作区也按 per-session 恢复为空）。
+      // 面板跟随当前会话：DSH 的 rightbar slot（旧 details）是 root 作用域，不传 sessionId，
+      // 切换会话时 props 不更新（实测对话区已切新会话、面板仍绑旧 store），用轮询
+      // sessions 服务 current 兜底——新会话 = 面板新状态（它的工作区也按 per-session 恢复为空）。
       const [sid, setSid] = react.useState(propSid || currentSessionId() || '')
       react.useEffect(function () {
         const sync = function () {
@@ -4323,13 +4477,13 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         // sid 就绪后 effect 因 [sid] 变化自动重跑并正常恢复。=====
         if (!sid) return
         uploadPanelState(getStore(sid), sid)
-        // ===== WORKSTATION: 工作站布局 —— OLAP 常驻左栏，始终展开 details =====
+        // ===== WORKSTATION: 工作站布局 —— OLAP 常驻中列，始终展开 rightbar =====
         wsApplyLayout()
         if (getOlapOpen(sid)) {
-          if (layout && typeof layout.openDetails === 'function') layout.openDetails()
+          if (layout && typeof layout.openRightbar === 'function') layout.openRightbar(true, false)
         } else {
           setOlapOpen(sid, true)
-          if (layout && typeof layout.openDetails === 'function') layout.openDetails()
+          if (layout && typeof layout.openRightbar === 'function') layout.openRightbar(true, false)
         }
         // ===== WORKSTATION: 从该会话自己的工作区恢复 tabs（多文件，per-session）=====
         const wm = wsMetaFor(sid)
@@ -4470,11 +4624,13 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       }
     }
 
-    // ===== WORKSTATION: OLAP 常驻左栏，不提供入口按钮/最大化按钮 =====
+    // ===== WORKSTATION: OLAP 常驻中列，不提供入口按钮/最大化按钮 =====
     // 历史会话按钮已移除：会话切换改走 DSH 原生 sidebar（工作站最左列，默认收起）。
-
-    slots.inject('details', function () {
-      return slots.register({ name: 'details', priority: -1 }, function (props) { return h(OlapPanel, props) })
+    // 新版 DSH 删掉了 details slot，右列（工作站重排后 = 中列）现在叫 rightbar，
+    // 被 dsh-client-ui-sidebar-right 的 dock 占用；priority:-1 比占用者（0）靠前，
+    // 按 SlotCore 的「priority 升序取首个 → 低者胜」语义遮蔽它，与旧 details 同款做法。
+    slots.inject('rightbar', function () {
+      return slots.register({ name: 'rightbar', priority: -1 }, function (props) { return h(OlapPanel, props) })
     })
     slots.inject('shell.overlay', function () {
       return slots.register({ name: 'shell.overlay', id: 'yh-ws-divider' }, function (props) { return h(WsDivider, props) })
