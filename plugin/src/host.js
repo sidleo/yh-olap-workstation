@@ -133,13 +133,47 @@ function normParams(p) {
   }))
   return arr
 }
+// ===== WORKSTATION: Session 参数（hive 虚拟参数）=====
+// 原版 olap（olap-web）的「Session 参数」弹窗：每行 {key,value} 带勾选，**只有勾选行生效**；
+// 提交 runSql 时聚合为对象 {key: value} 放进 executeConfigs 字段（原版无勾选行时该字段不带）。
+// 这里同时接受数组形态（[{key,value,selected}]，面板直传）与对象形态（模型直传 {key:value}）。
+function normExecuteConfigs(ec) {
+  if (!ec) return null
+  const out = {}
+  let n = 0
+  if (Array.isArray(ec)) {
+    ec.forEach(function (it) {
+      if (!it || !it.selected) return
+      const k = (it.key === undefined || it.key === null) ? '' : String(it.key)
+      if (!k) return
+      out[k] = (it.value === undefined || it.value === null) ? '' : String(it.value)
+      n++
+    })
+  } else if (typeof ec === 'object') {
+    Object.keys(ec).forEach(function (k) {
+      if (!k) return
+      out[k] = (ec[k] === undefined || ec[k] === null) ? '' : String(ec[k])
+      n++
+    })
+  }
+  return n ? out : null
+}
+
+// 面板标签上的 Session 参数摘要（olap state 用）：只显示勾选行
+function sessNote(t) {
+  const m = normExecuteConfigs(t && t.sessionConfigs)
+  if (!m) return ''
+  return ' session=' + JSON.stringify(m)
+}
+
 function runSqlBody(payload) {
   return {
     sql: payload.sql,
     engine: payload.engine,
     dsId: payload.dsId,
     params: normParams(payload.params),
-    executeConfigs: {},
+    // 无勾选项时沿用旧的空对象（服务端一直接受），有勾选才带真实 map
+    executeConfigs: normExecuteConfigs(payload.executeConfigs) || {},
   }
 }
 
@@ -574,7 +608,8 @@ const tool = {
       sql: { type: 'string', description: 'SQL 文本（write/run 时用）' },
       engine: { type: 'string', description: '引擎类型：1=hive 2=impala 3=clickhouse 4=doris' },
       dsId: { type: 'number', description: '数据源 id（引擎对应的数据源）' },
-      params: { type: 'array', items: { type: 'object', properties: { id: { type: 'number' }, key: { type: 'string' }, type: { type: 'number' }, value: { type: 'string' } } }, description: '参数数组 [{id,key,type,value}]' },
+      params: { type: 'array', items: { type: 'object', properties: { id: { type: 'number' }, key: { type: 'string' }, type: { type: 'number' }, value: { type: 'string' } } }, description: 'SQL ${} 参数数组 [{id,key,type,value}]' },
+      executeConfigs: { type: 'object', additionalProperties: { type: 'string' }, description: 'Session 参数（hive 虚拟参数）对象 {key:value}；不传则继承面板该标签上已勾选的 Session 参数' },
       lines: { type: 'array', items: { type: 'number' }, description: '只运行光标选定的行 [startLine, endLine]（1-based，闭区间）' },
       newTab: { type: 'boolean', description: 'write 时 true 表示新建一个标签并写入（自动激活），不覆盖现有标签' },
       timeoutSec: { type: 'number', description: 'run 等待超时秒数，默认 300' },
@@ -617,11 +652,11 @@ const tool = {
             sqlShow = arr.slice(ls - 1, le).join('\n')
             lineNote = ' lines=' + ls + '-' + le
           }
-          summary = 'tab#' + t.id + ' ' + (t.name || '') + (t.id === st.activeTab ? '(active)' : '') + ' engine=' + t.engine + (t.running ? ' RUNNING' : '') + ' finish=' + (t.finish || '') + lineNote + '\nsql=' + JSON.stringify(sqlShow)
+          summary = 'tab#' + t.id + ' ' + (t.name || '') + (t.id === st.activeTab ? '(active)' : '') + ' engine=' + t.engine + (t.running ? ' RUNNING' : '') + ' finish=' + (t.finish || '') + lineNote + sessNote(t) + '\nsql=' + JSON.stringify(sqlShow)
         }
       } else {
         summary = 'tabs=' + st.tabs.length + ' active=' + st.activeTab + ' account=' + (st.currentAccount || '') + '\n' + st.tabs.map(function (t) {
-          return '  #' + t.id + ' ' + (t.name || '') + (t.id === st.activeTab ? '(active)' : '') + ' engine=' + t.engine + (t.running ? ' RUNNING' : '') + (t.finish ? ' finish=' + t.finish : '') + '\n    sql=' + JSON.stringify((t.sql || '').slice(0, 300))
+          return '  #' + t.id + ' ' + (t.name || '') + (t.id === st.activeTab ? '(active)' : '') + ' engine=' + t.engine + (t.running ? ' RUNNING' : '') + (t.finish ? ' finish=' + t.finish : '') + sessNote(t) + '\n    sql=' + JSON.stringify((t.sql || '').slice(0, 300))
         }).join('\n')
       }
       return { ok: true, summary, data }
@@ -673,7 +708,10 @@ const tool = {
       }
       if (engine === undefined) engine = '2'
       if (dsId === undefined) dsId = 2
-      const payload = { sql: sqlText, engine, dsId, params }
+      // Session 参数：显式传入优先；否则继承面板标签上勾选的 Session 参数（与 engine/dsId/params 一致）
+      let executeConfigs = args.executeConfigs
+      if (executeConfigs === undefined && tb && Array.isArray(tb.sessionConfigs)) executeConfigs = tb.sessionConfigs
+      const payload = { sql: sqlText, engine, dsId, params, executeConfigs }
       const res = await runSqlFull(payload, args.timeoutSec || 300)
       if (res.ok && res.finish === 'ok') {
         enqueue(sid, { type: 'reflect', tabId: args.tabId, sql: sqlText, engine, dsId, result: res.result, log: res.log, executeId: res.executeId })
@@ -700,7 +738,7 @@ const OLAP_MODE_GUIDE = [
   '2. 修改/填入 SQL：先 olap state 读取编辑器当前 SQL（含用户手动编辑的最新内容），基于它修改，再 olap.write {tabId, sql} 写回。**write 只返回"已入队"，不代表已上屏——write 后必须再次 olap state 验证目标标签的 sql 已变成你写入的内容**；若 state 仍显示旧值/为空，说明面板未同步（未打开/刚刷新/会话错位），应告知用户刷新面板或确认面板打开后重试，绝不能谎报"已填入"。只按要求修改，不主动运行。',
   '3. 新建需求：先 olap state 判断活动标签是否已有代码；有代码则 olap.write {newTab:true, sql} 新建标签，不覆盖现有。新建后同样要 state 验证新标签已出现且 SQL 已写入。',
   '4. 多标签/片段引用：olap state 返回每个标签的 #id/SQL/引擎/状态；olap state/write/run/stop 都支持 tabId（从 1 开始）指定要读取、编辑、运行的标签，缺省用活动标签。用户消息里的 @olapN 或 @TabN（N 为标签 id，如 @olap3/@Tab3=标签 #3）表示引用面板标签 #N；**带行区间的 @olapN:Lx-y（如 @olap3:L3-10）表示用户指定了该标签的第 x~y 行**——需要读取该片段内容时用 olap state {tabId:N, lines:[x,y]}（返回仅该区间的 SQL）；需要修改该片段用 olap.write {tabId, lines, sql}（按行替换）。',
-  '5. 运行：只有用户要求运行/看结果时才 olap run（不传 sql 跑指定/活动标签；engine/dsId 自动继承面板，缺省 impala engine=2 dsId=2、hive engine=1）。**若 run 前刚 write 过，先 state 确认 SQL 已在编辑器再 run**（避免跑到旧内容）。',
+  '5. 运行：只有用户要求运行/看结果时才 olap run（不传 sql 跑指定/活动标签；engine/dsId 自动继承面板，缺省 impala engine=2 dsId=2、hive engine=1；hive 的 Session 参数/虚拟参数同样继承面板该标签已勾选的项，也可用 executeConfigs 显式传 {key:value}）。**若 run 前刚 write 过，先 state 确认 SQL 已在编辑器再 run**（避免跑到旧内容）。',
   '6. 本模式只做 SQL 编辑与执行：除非用户明确要求分析/解读，禁止对查询数据做主动分析、总结或建议；run 结果按需汇报 columns/rows/total/executeId 即可。',
   '7. 历史/下载/工单等操作也通过 olap 工具完成。',
 ].join('\n')

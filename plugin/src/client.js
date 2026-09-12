@@ -95,6 +95,7 @@ window.__ModuleLoader__.load({
 .yh-olap-func{flex:0 0 34px;display:flex;align-items:center;gap:5px;padding:0 6px;background:var(--dsw-alias-bg-layer-1,#171d26);border-bottom:1px solid var(--dsw-alias-border-l1,#242d3a)}
 .yh-olap-func select{height:24px;background:var(--dsw-alias-bg-layer-2,#1d2633);color:var(--dsw-alias-label-primary,#cdd7e0);border:1px solid var(--dsw-alias-border-l2,#33455a);border-radius:8px;font-size:11.5px;max-width:118px;padding:0 6px}
 .yh-olap-func button{height:24px;padding:0 8px;font-size:11.5px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2,#33455a);background:var(--dsw-alias-bg-layer-2,#1d2633);color:var(--dsw-alias-label-primary,#cdd7e0);cursor:pointer;flex:0 0 auto}
+.yh-olap-func button:disabled{opacity:.45;cursor:not-allowed}
 .yh-olap-mini{height:20px;padding:0 8px;font-size:11px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2,#33455a);background:var(--dsw-alias-bg-layer-2,#1d2633);color:var(--dsw-alias-label-primary,#cdd7e0);cursor:pointer;flex:0 0 auto;line-height:1}
 .yh-olap-mini:hover{background:var(--dsw-alias-bg-layer-1,#1a2230)}
 .yh-olap-histdlmenu .yh-olap-citem{padding:5px 12px;font-size:12px}
@@ -221,6 +222,21 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
 .yh-olap-prow{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .yh-olap-prow .yh-olap-plabel{flex:0 0 96px;font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace;color:var(--dsw-alias-label-secondary,#7a8ba0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .yh-olap-prow input{flex:1 1 auto;width:auto;margin-bottom:0}
+/* Session 参数弹窗：三列表格（勾选 / key / value），覆盖 .yh-olap-modal input 的块级默认样式 */
+.yh-olap-smodal{width:460px}
+.yh-olap-smodal .yh-olap-sbar{display:flex;gap:6px;margin-bottom:8px}
+.yh-olap-smodal .yh-olap-sbar button{flex:0 0 auto;width:64px}
+.yh-olap-smodal .yh-olap-stable{border:1px solid var(--dsw-alias-border-l2,#33455a);border-radius:6px;max-height:240px;overflow:auto}
+.yh-olap-smodal .yh-olap-shd,.yh-olap-smodal .yh-olap-srow{display:flex;align-items:center;gap:6px;padding:4px 6px;margin:0}
+.yh-olap-smodal .yh-olap-shd{background:var(--dsw-alias-bg-layer-2,#1d2633);font-size:11.5px;color:var(--dsw-alias-label-secondary,#7a8ba0)}
+.yh-olap-smodal .yh-olap-srow+.yh-olap-srow{border-top:1px solid var(--dsw-alias-border-l1,#242d3a)}
+.yh-olap-smodal .yh-olap-shd .yh-olap-sck{flex:0 0 15px;width:15px}
+.yh-olap-smodal .yh-olap-shd .yh-olap-sk{flex:0 0 170px}
+.yh-olap-smodal .yh-olap-shd .yh-olap-sv{flex:1 1 auto;min-width:0}
+.yh-olap-smodal .yh-olap-srow input{display:block;width:auto;margin:0}
+.yh-olap-smodal .yh-olap-srow input.yh-olap-sk{flex:0 0 170px}
+.yh-olap-smodal .yh-olap-srow input.yh-olap-sv{flex:1 1 auto;min-width:0}
+.yh-olap-smodal .yh-olap-srow input[type=checkbox]{flex:0 0 15px;width:15px;height:15px;padding:0;accent-color:var(--yh-ui-brand)}
 .yh-olap-dirlabel{font-size:11px;color:var(--dsw-alias-label-secondary,#7a8ba0);margin:2px 0 4px}
 .yh-olap-dirs{max-height:168px;overflow:auto;border:1px solid var(--dsw-alias-border-l2,#33455a);border-radius:6px;background:var(--dsw-alias-bg-layer-2,#1d2633);padding:3px 0}
 .yh-olap-dirrow{display:flex;align-items:center;gap:2px;padding:2px 8px 2px 6px;cursor:pointer;font-size:12px;line-height:17px;color:var(--dsw-alias-label-primary,#d7e2ee);white-space:nowrap}
@@ -1029,6 +1045,27 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
     }
     function activeTab(st) { return st.tabs.find(function (t) { return t.id === st.activeTab }) || st.tabs[0] }
 
+    // ===== WORKSTATION: Session 参数（hive 虚拟参数）=====
+    // 原版 olap：按钮仅 hive 引擎 + 编辑器有 SQL 时可用；弹窗每行 {key,value} 带勾选，
+    // **只有勾选行**生效 —— 运行时聚合成对象 {key:value} 作为 executeConfigs 提交 runSql。
+    // 面板侧存 tab.sessionConfigs = [{id,key,value,selected}]（随 params 文件按标签持久化）。
+    function sessionRows(tab) { return (tab && tab.sessionConfigs) || [] }
+    function sessionConfigsMap(tab) {
+      const out = {}
+      let n = 0
+      sessionRows(tab).forEach(function (r) {
+        if (!r || !r.selected) return
+        const k = String(r.key === undefined || r.key === null ? '' : r.key).trim()
+        if (!k) return
+        out[k] = (r.value === undefined || r.value === null) ? '' : String(r.value)
+        n++
+      })
+      return n ? out : null
+    }
+    function sessionEnabledFor(tab) {
+      return !!tab && String(tab.engine) === '1' && !!(tab.sql || '').trim()
+    }
+
     const olapUI = { open: false, lz: new Set() }
     const olapOpenBySession = {}
     try { const _raw = window.localStorage && window.localStorage.getItem('yh_olap_open'); if (_raw) { const _o = JSON.parse(_raw); for (const _k in _o) if (_o[_k] === true) olapOpenBySession[_k] = true } } catch (e) { /* ignore */ }
@@ -1105,7 +1142,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       if (!st || !st.tabs || !st.tabs.length) return
       // ===== WORKSTATION: 只自动保存勾选「自动保存」的标签 =====
       const list = st.tabs.filter(function (t) { return t.autoSave === true }).map(function (t) {
-        return { id: t.id, name: t.name || ('Tab' + t.id), sql: t.sql || '', params: t.params || {}, note: t.note || '', collectId: t.collectId }
+        return { id: t.id, name: t.name || ('Tab' + t.id), sql: t.sql || '', params: t.params || {}, sessionConfigs: t.sessionConfigs || [], note: t.note || '', collectId: t.collectId }
       })
       wsMetaFor(sid).tabs = list
       for (let i = 0; i < list.length; i++) {
@@ -1117,6 +1154,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         // __collectId 用于收藏标签去重——同一收藏刷新后也只会有一个标签）=====
         const paramsJson = Object.assign({}, t.params || {}, { __name: t.name || ('Tab' + t.id) })
         if (t.collectId) paramsJson.__collectId = t.collectId
+        if (t.sessionConfigs && t.sessionConfigs.length) paramsJson.__sessionConfigs = t.sessionConfigs
         callHost('ws.workspace.save', { sessionId: sid, kind: 'params', name: base, content: JSON.stringify(paramsJson) })
         if (t.note) callHost('ws.workspace.save', { sessionId: sid, kind: 'note', name: base, content: t.note })
       }
@@ -1144,7 +1182,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
           ]).then(function (rs) {
             const sr = rs[0], pr = rs[1], nr = rs[2]
             const t = { id: id, name: nm, sql: (sr && sr.ok) ? sr.content : '', params: {}, note: '', engine: '2', dsId: 2, wsFile: f.name }
-            if (pr && pr.ok) { try { const p = JSON.parse(pr.content); if (p && typeof p === 'object') { t.params = p; if (p.__name) t.name = p.__name; delete t.params.__name; if (p.__collectId) t.collectId = p.__collectId; delete t.params.__collectId } } catch (e) { /* ignore */ } }
+            if (pr && pr.ok) { try { const p = JSON.parse(pr.content); if (p && typeof p === 'object') { t.params = p; if (p.__name) t.name = p.__name; delete t.params.__name; if (p.__collectId) t.collectId = p.__collectId; delete t.params.__collectId; if (Array.isArray(p.__sessionConfigs)) t.sessionConfigs = p.__sessionConfigs; delete t.params.__sessionConfigs } } catch (e) { /* ignore */ } }
             if (nr && nr.ok) t.note = nr.content
             tabs.push(t)
           })
@@ -1161,7 +1199,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       if (wm.loaded && wm.tabs && wm.tabs.length && st.__wsRestored !== true) {
         markProgSqlSet()
         st.tabs = wm.tabs.map(function (t) {
-          return { id: t.id, name: t.name, sql: t.sql, engine: t.engine || '2', dsId: t.dsId || 2, params: t.params || {}, note: t.note || '', autoSave: true, bottomTab: 'result', running: false, executeId: '', finish: '', log: '', errMsg: '', result: null, collectId: t.collectId, wsFile: t.id != null ? String(t.id) : undefined }
+          return { id: t.id, name: t.name, sql: t.sql, engine: t.engine || '2', dsId: t.dsId || 2, params: t.params || {}, sessionConfigs: t.sessionConfigs || [], note: t.note || '', autoSave: true, bottomTab: 'result', running: false, executeId: '', finish: '', log: '', errMsg: '', result: null, collectId: t.collectId, wsFile: t.id != null ? String(t.id) : undefined }
         })
         st.activeTab = st.tabs[0].id
         st.__wsRestored = true
@@ -3114,7 +3152,8 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       }
       if (!sql.trim()) { tab.log = '无 SQL'; tab.finish = 'error'; bump(); return }
       const paramsArr = Object.keys(tab.params || {}).map(function (k) { return { key: k, value: tab.params[k] } })
-      const payload = { sql: sql, engine: tab.engine, dsId: tab.dsId, params: paramsArr }
+      // Session 参数：只有勾选行进 executeConfigs（对象 {key:value}），无勾选则不传
+      const payload = { sql: sql, engine: tab.engine, dsId: tab.dsId, params: paramsArr, executeConfigs: sessionConfigsMap(tab) }
       tab.running = true; tab.finish = 'run'; tab.log = ''; tab.errMsg = ''; tab.result = null; tab.executeId = ''
       tab.bottomTab = 'log'
       bump()
@@ -3787,6 +3826,19 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
         }, dsOptions),
         h('button', { className: tab.running ? 'stop' : 'run', onClick: function () { tab.running ? killRun(st, sid, bump) : doRun(st, sid, bump) } }, tab.running ? '■ 停止' : '▶ 执行'),
         h('button', { onClick: function () { st.paramModalFor = true; bump() }, title: '设置 ${} 参数' }, '参数'),
+        // ===== WORKSTATION: Session 参数（hive 虚拟参数）——与原版一致：仅 hive 引擎 + SQL 非空可点 =====
+        h('button', {
+          disabled: !sessionEnabledFor(tab),
+          title: 'Session 参数（hive 虚拟参数）：仅 hive 引擎且 SQL 非空时可点；弹窗内打勾的行才随执行生效',
+          onClick: function () {
+            if (!sessionEnabledFor(tab)) return
+            // ===== WORKSTATION: 弹窗内是「草稿」，只有「确定」才写回 tab.sessionConfigs
+            // （与原版一致：取消丢弃编辑）。=====
+            st.sessionDraft = sessionRows(tab).map(function (r) { return { id: r.id, key: r.key, value: r.value, selected: !!r.selected } })
+            st.sessionModalFor = true
+            bump()
+          },
+        }, 'Session 参数'),
         h('button', { onClick: function () { st.noteText = (activeTab(st).note || ''); st.noteModalFor = true; bump() }, title: '当前 SQL 的便签（本地保存）' }, '便签'),
         h('button', { onClick: function () { downloadSimple(st, sid, bump) } }, '全量下载'),
         // ===== WORKSTATION: 保存 —— 来自收藏的标签直接更新该收藏；否则弹目录/名称对话框 =====
@@ -4319,6 +4371,75 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
             h('button', { className: 'pri', onClick: function () { st.paramModalFor = false; bump(); wsScheduleSave(sid, 150) } }, '确定'))))
     }
 
+    // ===== WORKSTATION: Session 参数弹窗（对照原版 olap「Session 参数」）=====
+    // 表格三列：勾选 / key / value；「添加」新增一行（默认不勾选）、「删除」移除勾选行；
+    // 「确定」要求每行 key/value 都非空（空列表放行），并把 selected 落进 tab.sessionConfigs
+    // → 随 params 文件持久化，刷新/切会话后勾选状态仍在。「取消」丢弃草稿（与原版一致）。
+    function SessionParamModal(props) {
+      const { st, sid, bump } = props
+      if (!st.sessionModalFor) return null
+      const tab = activeTab(st)
+      if (!tab) return null
+      const rows = st.sessionDraft || []
+      const close = function () { st.sessionModalFor = false; st.sessionDraft = null; bump() }
+      const nextId = function () {
+        let mx = 0
+        rows.forEach(function (r) { if (r && typeof r.id === 'number' && r.id > mx) mx = r.id })
+        return mx + 1
+      }
+      const addRow = function () {
+        rows.push({ id: nextId(), key: '', value: '', selected: false })
+        bump()
+      }
+      const delRows = function () {
+        if (!rows.some(function (r) { return r && r.selected })) { showToast(st, '请先勾选要删除的行'); return }
+        st.sessionDraft = rows.filter(function (r) { return !r.selected }).map(function (r, i) {
+          return { id: i + 1, key: r.key, value: r.value, selected: false }
+        })
+        bump()
+      }
+      const submit = function () {
+        const bad = rows.filter(function (r) { return !String((r && r.key) || '').trim() || !String((r && r.value) || '').trim() })
+        if (bad.length) { showToast(st, '参数中 key、value 不能有空'); return }
+        tab.sessionConfigs = rows.map(function (r, i) {
+          return { id: i + 1, key: String(r.key).trim(), value: String(r.value), selected: !!r.selected }
+        })
+        st.sessionModalFor = false
+        st.sessionDraft = null
+        bump()
+        wsScheduleSave(sid, 150)
+      }
+      return h('div', { className: 'yh-olap-mask', onClick: close },
+        h('div', { className: 'yh-olap-modal yh-olap-smodal', onClick: function (e) { e.stopPropagation() } },
+          h('h4', null, 'Session 参数'),
+          h('div', { className: 'yh-olap-sbar' },
+            h('button', { className: 'pri', onClick: addRow }, '添加'),
+            h('button', { onClick: delRows }, '删除')),
+          h('div', { className: 'yh-olap-stable' },
+            h('div', { className: 'yh-olap-shd' },
+              h('span', { className: 'yh-olap-sck' }),
+              h('span', { className: 'yh-olap-sk' }, 'key'),
+              h('span', { className: 'yh-olap-sv' }, 'value')),
+            rows.length ? rows.map(function (r) {
+              return h('div', { className: 'yh-olap-srow', key: r.id },
+                h('input', {
+                  type: 'checkbox', className: 'yh-olap-sck', checked: !!r.selected,
+                  onChange: function (e) { r.selected = e.target.checked; bump() },
+                }),
+                h('input', {
+                  className: 'yh-olap-sk', value: (r.key === undefined || r.key === null) ? '' : String(r.key), placeholder: 'hive.xxx',
+                  onChange: function (e) { r.key = e.target.value; bump() },
+                }),
+                h('input', {
+                  className: 'yh-olap-sv', value: (r.value === undefined || r.value === null) ? '' : String(r.value), placeholder: 'value',
+                  onChange: function (e) { r.value = e.target.value; bump() },
+                }))
+            }) : h('div', { className: 'yh-olap-hint' }, '暂无数据，点「添加」新增；只有打勾的行才会随执行生效')),
+          h('div', { className: 'row', style: { marginTop: 10 } },
+            h('button', { onClick: close }, '取消'),
+            h('button', { className: 'pri', onClick: submit }, '确定'))))
+    }
+
     function AccountManageModal(props) {
       const { st, sid, bump } = props
       if (!st.accManage) return null
@@ -4405,7 +4526,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
       const state = {
         activeTab: st.activeTab || 1,
         tabs: (st.tabs || []).map(function (t) {
-          return { id: t.id, name: t.name, sql: t.sql, engine: t.engine, dsId: t.dsId, running: !!t.running, finish: t.finish || '', executeId: t.executeId || '', log: t.log || '', errMsg: t.errMsg || '' }
+          return { id: t.id, name: t.name, sql: t.sql, engine: t.engine, dsId: t.dsId, running: !!t.running, finish: t.finish || '', executeId: t.executeId || '', log: t.log || '', errMsg: t.errMsg || '', sessionConfigs: t.sessionConfigs || [] }
         }),
         currentAccount: st.currentAccount || '',
         dsList: st.dsList || [],
@@ -4551,6 +4672,7 @@ html[style*="color-scheme: dark"] .yh-olap-findhit.cur{background:rgba(77,140,25
               h('div', { className: 'yh-olap-bot', style: { flex: (1 - editorRatio) * 10 } }, h(BottomBar, { st: st, sid: sid, bump: bump }))))),
         h(CollectSaveModal, { st: st, bump: bump }),
         h(ParamModal, { st: st, sid: sid, bump: bump }),
+        h(SessionParamModal, { st: st, sid: sid, bump: bump }),
         h(NoteModal, { st: st, sid: sid, bump: bump }),
         h(AccountManageModal, { st: st, sid: sid, bump: bump }),
         h(DownloadDetailModal, { st: st, bump: bump }),
