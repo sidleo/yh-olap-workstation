@@ -30,6 +30,27 @@ import { loadColumns } from './resources.js'
 import { doRun } from './run.js'
 import { h } from './util.js'
 
+// CodeMirror 查找/替换面板的中文文案（EditorState.phrases）
+const ZH_PHRASES = {
+  'Find': '查找',
+  'Replace': '替换',
+  'next': '下一个',
+  'previous': '上一个',
+  'all': '全部选中',
+  'match case': '区分大小写',
+  'regexp': '正则',
+  'by word': '全词匹配',
+  'replace': '替换',
+  'replace all': '全部替换',
+  'close': '关闭',
+  'Go to line': '转到行',
+  'go': '转到',
+  'current match': '当前匹配',
+  'on line': '行',
+  'replaced $ matches': '已替换 $ 处',
+  'replaced match on line $': '已替换第 $ 行',
+}
+
 // ---------- 引擎 dialect ----------
 const dialectCache = new Map()
 function makeDialect(engine) {
@@ -376,6 +397,7 @@ export function SqlEditor(props) {
       EditorState.allowMultipleSelections.of(true),
       indentOnInput(),
       indentUnit.of('    '),
+      EditorState.phrases.of(ZH_PHRASES),
       bracketMatching(),
       closeBrackets(),
       autocompletion({ override: [source], activateOnTyping: true, closeOnBlur: true, icons: false }),

@@ -311,6 +311,35 @@ log('darkSelContrast', darkColors.selContrast)
 log('darkNormalContrast', darkColors.normalContrast)
 await page.evaluate(() => document.body.removeAttribute('data-ds-dark-theme'))
 await page.waitForTimeout(600)
+// 查找面板：中文化 + 两行紧凑布局
+if (rect) {
+  await page.mouse.click(rect.x, rect.y)
+  await page.keyboard.press('ControlOrMeta+f')
+  await page.waitForTimeout(700)
+}
+const sp = await page.evaluate(() => {
+  const p = document.querySelector('.cm-panel.cm-search')
+  if (!p) return { found: false }
+  const search = p.querySelector('input.cm-textfield[name=search]')
+  const replace = p.querySelector('input.cm-textfield[name=replace]')
+  const btns = Array.from(p.querySelectorAll('button')).map(function (b) { return b.textContent.trim() })
+  const labels = Array.from(p.querySelectorAll('label')).map(function (l) { return l.textContent.trim() })
+  return {
+    found: true,
+    placeholders: Array.from(p.querySelectorAll('input.cm-textfield')).map(function (i) { return i.placeholder }),
+    buttons: btns,
+    labels: labels,
+    twoRows: !!(search && replace && search.getBoundingClientRect().y < replace.getBoundingClientRect().y),
+    searchWidth: search ? Math.round(search.getBoundingClientRect().width) : 0,
+  }
+})
+log('searchPanelLocalized', sp.found && sp.placeholders.join(',') === '查找,替换' &&
+  ['下一个', '上一个', '全部选中', '替换', '全部替换'].every(function (t) { return sp.buttons.indexOf(t) >= 0 }) &&
+  ['区分大小写', '正则', '全词匹配'].every(function (t) { return sp.labels.indexOf(t) >= 0 }))
+log('searchPanelTwoRows', !!sp.twoRows)
+log('searchPanelInputWidth', sp.searchWidth)
+await page.keyboard.press('Escape')
+await page.waitForTimeout(300)
 // 回归：OLAP 打开不得让 DSH 页面出现滚动（历史 bug：CM tooltip 容器被主题 height:100% 撑出视口）
 log('scrollH', await page.evaluate(() => document.documentElement.scrollHeight))
 log('innerH', await page.evaluate(() => window.innerHeight))
@@ -356,6 +385,10 @@ EOF
     DN="$(echo "$J" | grep -o '"darkNormalContrast=[0-9.]*"' | head -1 | cut -d= -f2 | tr -d '"')"
     if awk -v v="${DS:-0}" 'BEGIN{exit !(v>=3)}'; then ok "深色模式补全选中行对比度 ${DS}（>=3）"; else bad "深色模式补全选中行对比度过低（${DS:-?}）"; fi
     if awk -v v="${DN:-0}" 'BEGIN{exit !(v>=3)}'; then ok "深色模式补全普通行对比度 ${DN}（>=3）"; else bad "深色模式补全普通行对比度过低（${DN:-?}）"; fi
+    echo "$J" | grep -q "\"searchPanelLocalized=true\"" && ok "查找面板已中文化（查找/替换/下一个/区分大小写…）" || bad "查找面板未中文化（$(echo "$J" | grep -o "\"searchPanelLocalized=[^,]*\"" | head -1)）"
+    echo "$J" | grep -q "\"searchPanelTwoRows=true\"" && ok "查找面板两行紧凑布局" || bad "查找面板不是两行布局"
+    SW="$(echo "$J" | grep -o "\"searchPanelInputWidth=[0-9]*\"" | head -1 | cut -d= -f2 | tr -d "\"")"
+    if [ -n "$SW" ] && [ "$SW" -ge 140 ]; then ok "查找输入框自适应宽度（${SW}px）"; else bad "查找输入框过窄（${SW:-?}px）"; fi
     SH="$(echo "$J" | grep -o '"scrollH=[0-9]*"' | head -1 | cut -d= -f2 | tr -d '"')"
     IH="$(echo "$J" | grep -o '"innerH=[0-9]*"' | head -1 | cut -d= -f2 | tr -d '"')"
     ST="$(echo "$J" | grep -o '"scrollTopAfter=[0-9-]*"' | head -1 | cut -d= -f2 | tr -d '"')"

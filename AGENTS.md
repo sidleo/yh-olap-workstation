@@ -117,6 +117,12 @@ cd .. && node --test test/unit/*.test.mjs
     设成 `display:flex`，再给 `.cm-completionDetail{margin-left:auto}` 才会右对齐（CM 默认
     li 是块级、detail 是 inline span，单靠 auto margin 无效）；label 配 `min-width:0` +
     ellipsis 防止长名字挤压。verify.sh 有「右边缘差 ≤1px」断言。
+  - **查找/替换面板（CM search）**：CM 默认只出英文（`Next/Previous/Match case…`），必须用
+    `EditorState.phrases.of(ZH_PHRASES)` 中文化（phrase key 直接取自 @codemirror/search 源码里
+    的 `phrase(...)`，改文案改 `editor.js` 顶部 `ZH_PHRASES`）；布局与配色在
+    `styles.css` 的 `.yh-olap-panel .yh-olap-cm-host .cm-panel.cm-search`：用 flex + `order`
+    重排成两行（查找行 / 替换行），前缀多一层 `.yh-olap-panel` 提高特异性压过 CM 的 baseTheme
+    （CM 的样式在编辑器创建时注入，晚于本插件 styles.css）。verify.sh 有中文化/两行/输入框宽度断言。
   - **Tab / Shift-Tab 策略**（`Prec.highest` 自定义 keymap，verify.sh 有 5 条浏览器断言）：
     ① 补全弹层打开 → Tab 接受当前项并插入（函数自动 `name()`）；
     ② 有选区 → Tab / Shift-Tab 对选中行整行缩进 / 反缩进（`indentMore`/`indentLess`，

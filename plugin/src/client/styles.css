@@ -247,3 +247,54 @@
 .yh-olap-cm-tooltip-host .cm-tooltip-autocomplete > ul > li[aria-selected]{background:var(--yh-tip-sel)!important;color:var(--yh-tip-sel-fg)!important}
 .yh-olap-cm-tooltip-host .cm-completionDetail{color:var(--yh-tip-muted)!important}
 .yh-olap-cm-tooltip-host .yh-cm-hover{background:var(--yh-tip-bg)!important;color:var(--yh-tip-fg)!important;border-color:var(--yh-tip-border)!important}
+
+/* ================= 查找/替换面板（CM search）：中文化后的紧凑布局 ================= */
+.yh-olap-panel .yh-olap-cm-host .cm-panels{position:relative;background:transparent;border:none;left:0;right:0}
+.yh-olap-panel .yh-olap-cm-host .cm-panels-bottom{border-top:none}
+.yh-olap-panel .yh-olap-cm-host .cm-panel.cm-search{
+  display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;
+  padding:8px 34px 8px 10px;margin:0;position:relative;
+  background:var(--dsw-alias-bg-layer-1,#171d26);
+  border-top:1px solid var(--dsw-alias-border-l1,#242d3a);
+  color:var(--dsw-alias-label-primary);font-size:12px;
+}
+.yh-olap-panel .yh-olap-cm-host .cm-panel.cm-search input,
+.yh-olap-panel .yh-olap-cm-host .cm-panel.cm-search button,
+.yh-olap-panel .yh-olap-cm-host .cm-panel.cm-search label{margin:0}
+.yh-olap-panel .yh-olap-cm-host .cm-search .cm-textfield{
+  order:1;flex:1 1 160px;min-width:110px;height:26px;padding:0 8px;box-sizing:border-box;
+  border-radius:6px;border:1px solid var(--dsw-alias-border-l2,#33455a);
+  background:var(--dsw-alias-bg-layer-2,#1d2633);color:var(--dsw-alias-label-primary);
+  font-size:12px;outline:none;
+}
+.yh-olap-panel .yh-olap-cm-host .cm-search .cm-textfield::placeholder{color:var(--dsw-alias-label-tertiary)}
+.yh-olap-panel .yh-olap-cm-host .cm-search .cm-textfield:focus{border-color:var(--yh-ui-brand)}
+.yh-olap-panel .yh-olap-cm-host .cm-search .cm-button{
+  order:2;height:26px;padding:0 10px;border-radius:6px;font-size:12px;line-height:1;
+  border:1px solid var(--dsw-alias-border-l2,#33455a);
+  background:var(--dsw-alias-bg-layer-2,#1d2633);color:var(--dsw-alias-label-primary);
+  background-image:none;cursor:pointer;flex:0 0 auto;white-space:nowrap;
+}
+.yh-olap-panel .yh-olap-cm-host .cm-search .cm-button:hover{background:var(--dsw-alias-bg-layer-3,#243044)}
+.yh-olap-panel .yh-olap-cm-host .cm-search .cm-button[name=next],
+.yh-olap-panel .yh-olap-cm-host .cm-search .cm-button[name=replace]{border-color:var(--yh-ui-brand);color:var(--yh-ui-brand)}
+.yh-olap-panel .yh-olap-cm-host .cm-search .cm-button[name=next]:hover,
+.yh-olap-panel .yh-olap-cm-host .cm-search .cm-button[name=replace]:hover{background:var(--yh-ui-brand-weak)}
+.yh-olap-panel .yh-olap-cm-host .cm-search label{
+  order:9;display:inline-flex;align-items:center;gap:4px;
+  font-size:11.5px;color:var(--dsw-alias-label-secondary,#8a9aae);white-space:nowrap;
+}
+.yh-olap-panel .yh-olap-cm-host .cm-search label:nth-of-type(2){order:10}
+.yh-olap-panel .yh-olap-cm-host .cm-search label:nth-of-type(3){order:11}
+.yh-olap-panel .yh-olap-cm-host .cm-search input[type=checkbox]{accent-color:var(--yh-ui-brand);margin:0;width:13px;height:13px}
+.yh-olap-panel .yh-olap-cm-host .cm-search br{order:5;flex-basis:100%;height:0;margin:0;border:none}
+.yh-olap-panel .yh-olap-cm-host .cm-search .cm-textfield[name=replace]{order:6}
+.yh-olap-panel .yh-olap-cm-host .cm-search .cm-button[name=replace]{order:7}
+.yh-olap-panel .yh-olap-cm-host .cm-search .cm-button[name=replaceAll]{order:8}
+.yh-olap-panel .yh-olap-cm-host .cm-search [name=close]{
+  position:absolute;top:6px;right:6px;width:22px;height:22px;padding:0;margin:0;
+  display:inline-flex;align-items:center;justify-content:center;
+  border:none;border-radius:6px;background:transparent;
+  color:var(--dsw-alias-label-tertiary);font-size:16px;line-height:1;cursor:pointer;
+}
+.yh-olap-panel .yh-olap-cm-host .cm-search [name=close]:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
