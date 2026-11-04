@@ -3,22 +3,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { h, toArray, fmtLog, copyToClipboard } from './util.js'
+import { shortT } from './timefmt.js'
 import { callHost } from './rpc.js'
 import { showToast, activeTab } from './store.js'
 import { loadHistory, loadDownloads } from './resources.js'
 import { downloadBlob } from './run.js'
 
 const STATE_NAME = { 1: '执行中', 2: '执行成功', 3: '数据生成失败', 4: 'kerberos失败', 5: 'hive错误', 6: 'consul失败', 7: '自动取消', 8: '执行取消' }
-// 时间压缩：YYYY-MM-DD HH:mm:ss / M/D/YY h:mm AM → MM-DD HH:mm（窄容器省宽）
-function shortT(t) {
-  if (!t) return '-'
-  const str = String(t).trim()
-  const m = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{1,2})(?::\d{1,2})?/)
-  if (m) return m[2] + '-' + m[3] + ' ' + m[4] + ':' + m[5]
-  const m2 = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})\s+(\d{1,2}):(\d{1,2})\s*(AM|PM)?/i)
-  if (m2) return m2[1] + '/' + m2[2] + ' ' + m2[4] + ':' + m2[5]
-  return str.length > 14 ? str.slice(0, 14) : str
-}
+// 时间统一格式：MM-dd HH:mm（实现见 timefmt.js，纯函数可单测）
 // 长 id 缩略：uuid 显示前 8 位 + …
 function shortId(id) {
   const str = String(id == null ? '' : id)
@@ -213,8 +205,8 @@ function DownloadDetailModal(props) {
         row('引擎', engName),
         row('提交人', d.committerName || d.committer),
         row('审批人', d.confirmorName || d.confirmor),
-        row('申请时间', d.createTime || d.startTime),
-        row('完成时间', d.finishTime)),
+        row('申请时间', shortT(d.createTime || d.startTime)),
+        row('完成时间', shortT(d.finishTime))),
       h('div', { className: 'yh-olap-dlmeta' },
         row('审批说明', d.confirmNote),
         row('execId', d.execId),
