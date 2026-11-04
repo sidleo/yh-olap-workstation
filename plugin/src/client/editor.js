@@ -9,14 +9,14 @@
 // - tab.sql 是唯一事实源：docChanged → 立即写 tab.sql + 800ms 自动落盘；
 //   外部写入（模型 write / 历史插入 / 收藏打开）由 props.sql 变化触发一次 dispatch 同步。
 import { useEffect, useRef } from 'react'
-import { EditorState, Compartment, Prec } from '@codemirror/state'
+import { EditorState, Compartment, Prec, EditorSelection } from '@codemirror/state'
 import {
   EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
   highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor,
   hoverTooltip, ViewPlugin, Decoration, tooltips,
 } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
-import { bracketMatching, foldGutter, foldKeymap, indentOnInput, syntaxHighlighting, HighlightStyle } from '@codemirror/language'
+import { defaultKeymap, history, historyKeymap, indentMore, indentLess } from '@codemirror/commands'
+import { bracketMatching, foldGutter, foldKeymap, indentOnInput, indentUnit, syntaxHighlighting, HighlightStyle } from '@codemirror/language'
 import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap, completionStatus, acceptCompletion } from '@codemirror/autocomplete'
 import { search, searchKeymap, openSearchPanel, selectNextOccurrence, highlightSelectionMatches } from '@codemirror/search'
 import { sql, SQLDialect } from '@codemirror/lang-sql'
@@ -325,14 +325,41 @@ export function SqlEditor(props) {
       if (!t) return null
       try { return completionOptions(p.st, p.sid, t, context.state, context.pos, context.explicit) } catch (e) { return null }
     }
-    // Tab：补全弹层打开时接受当前选中项（主流 SQL 编辑器习惯）；未打开时返回 false，
-    // 继续走下面的 indentWithTab（缩进 / Shift-Tab 反缩进）。
+    // Tab / Shift-Tab 策略：
+    // 1) 补全弹层打开 → Tab 接受当前项（主流 SQL 编辑器习惯）；
+    // 2) 有选区 → Tab / Shift-Tab 对选中行整体缩进 / 反缩进；
+    // 3) 无选区 → Tab 只在光标处补软缩进（到下一个 4 空格制表位），**不整行缩进**；
+    //    Shift-Tab 不做整行反缩进（no-op）。这样光标在行中/行尾时不会把整行挪动。
+    const hasSelection = function (state) {
+      return state.selection.ranges.some(function (r) { return !r.empty })
+    }
+    const softTab = function (view) {
+      const st = view.state
+      view.dispatch(st.changeByRange(function (range) {
+        if (!range.empty) return { range: range }
+        const line = st.doc.lineAt(range.head)
+        const n = 4 - ((range.head - line.from) % 4)
+        return {
+          changes: { from: range.head, insert: ' '.repeat(n) },
+          range: EditorSelection.cursor(range.head + n),
+        }
+      }))
+      return true
+    }
     const tabKey = {
       key: 'Tab',
       run: function (view) {
-        if (completionStatus(view.state) !== 'active') return false
-        acceptCompletion(view)
-        return true
+        if (completionStatus(view.state) === 'active') { acceptCompletion(view); return true }
+        if (hasSelection(view.state)) return indentMore(view)
+        return softTab(view)
+      },
+    }
+    const shiftTabKey = {
+      key: 'Shift-Tab',
+      run: function (view) {
+        if (completionStatus(view.state) === 'active') return false
+        if (hasSelection(view.state)) return indentLess(view)
+        return true // 无选区：不触发整行反缩进
       },
     }
     return [
@@ -345,6 +372,7 @@ export function SqlEditor(props) {
       dropCursor(),
       EditorState.allowMultipleSelections.of(true),
       indentOnInput(),
+      indentUnit.of('    '),
       bracketMatching(),
       closeBrackets(),
       autocompletion({ override: [source], activateOnTyping: true, closeOnBlur: true, icons: false }),
@@ -367,10 +395,9 @@ export function SqlEditor(props) {
         ...historyKeymap,
         ...foldKeymap,
         ...completionKeymap,
-        indentWithTab,
         { key: 'Mod-d', run: selectNextOccurrence },
       ]),
-      Prec.highest(keymap.of([runKey, formatKey, commentKey, tabKey])),
+      Prec.highest(keymap.of([runKey, formatKey, commentKey, tabKey, shiftTabKey])),
       EditorView.lineWrapping,
       EditorView.updateListener.of(function (u) {
         if (u.docChanged) onDocChanged(u.view)

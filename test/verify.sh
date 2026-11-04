@@ -240,6 +240,33 @@ if (rect) {
 }
 log('docAfterTab', JSON.stringify(docAfterTab))
 log('completionOpenAfterTab', await page.evaluate(() => !!document.querySelector('.cm-tooltip-autocomplete')))
+// Tab 行为回归（用户约定：无选区不整行缩进；有选区才整行缩进/反缩进）
+const readDoc = () => page.evaluate(() => (document.querySelector('.cm-content') || {}).textContent || '')
+if (rect) {
+  await page.keyboard.press('ControlOrMeta+a')
+  await page.keyboard.type('select 1', { delay: 10 })
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Tab')
+  await page.waitForTimeout(300)
+  const collapsedTab = await readDoc()
+  log('collapsedTabNoLineIndent', collapsedTab.indexOf('select 1') === 0 && !/^\s/.test(collapsedTab))
+  log('collapsedTabSoftInsert', collapsedTab !== 'select 1')
+  await page.keyboard.press('ControlOrMeta+a')
+  await page.keyboard.press('Tab')
+  await page.waitForTimeout(300)
+  const selectedTab = await readDoc()
+  log('selectedTabIndented', selectedTab.indexOf('    select 1') === 0)
+  await page.keyboard.press('Shift+Tab')
+  await page.waitForTimeout(300)
+  const selectedShiftTab = await readDoc()
+  log('selectedShiftTabRestored', selectedShiftTab.indexOf('select 1') === 0)
+  await page.keyboard.press('ArrowRight')
+  const beforeCollapsedShift = await readDoc()
+  await page.keyboard.press('Shift+Tab')
+  await page.waitForTimeout(300)
+  const afterCollapsedShift = await readDoc()
+  log('collapsedShiftTabNoop', beforeCollapsedShift === afterCollapsedShift)
+}
 // 回归：OLAP 打开不得让 DSH 页面出现滚动（历史 bug：CM tooltip 容器被主题 height:100% 撑出视口）
 log('scrollH', await page.evaluate(() => document.documentElement.scrollHeight))
 log('innerH', await page.evaluate(() => window.innerHeight))
@@ -267,6 +294,11 @@ EOF
     echo "$J" | grep -q 'ndv' && ok "impala 补全包含函数 ndv" || bad "impala 补全缺少 ndv（$(echo "$J" | grep -o '"completion=[^,]*' | head -1)）"
     echo "$J" | grep -q '"docAfterTab=.*ndv()' && ok "Tab 接受补全（插入 ndv()）" || bad "Tab 未接受补全（$(echo "$J" | grep -o '"docAfterTab=[^,]*' | head -1)）"
     echo "$J" | grep -q '"completionOpenAfterTab=false"' && ok "Tab 接受后补全弹层关闭" || bad "Tab 接受后补全弹层未关闭"
+    echo "$J" | grep -q '"collapsedTabNoLineIndent=true"' && ok "无选区 Tab 不整行缩进" || bad "无选区 Tab 仍整行缩进"
+    echo "$J" | grep -q '"collapsedTabSoftInsert=true"' && ok "无选区 Tab 在光标处补软缩进" || bad "无选区 Tab 未在光标处补缩进"
+    echo "$J" | grep -q '"selectedTabIndented=true"' && ok "有选区 Tab 整行缩进（4 空格）" || bad "有选区 Tab 未整行缩进"
+    echo "$J" | grep -q '"selectedShiftTabRestored=true"' && ok "有选区 Shift+Tab 反缩进还原" || bad "有选区 Shift+Tab 未还原"
+    echo "$J" | grep -q '"collapsedShiftTabNoop=true"' && ok "无选区 Shift+Tab 不整行反缩进" || bad "无选区 Shift+Tab 仍整行反缩进"
     SH="$(echo "$J" | grep -o '"scrollH=[0-9]*"' | head -1 | cut -d= -f2 | tr -d '"')"
     IH="$(echo "$J" | grep -o '"innerH=[0-9]*"' | head -1 | cut -d= -f2 | tr -d '"')"
     ST="$(echo "$J" | grep -o '"scrollTopAfter=[0-9-]*"' | head -1 | cut -d= -f2 | tr -d '"')"

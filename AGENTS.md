@@ -106,9 +106,13 @@ cd .. && node --test test/unit/*.test.mjs
     整屏高、插在 `#root` 之后，页面 `scrollHeight` 翻倍 → 整个 DSH 出现异常滚动
     （2026-11 已修；`test/verify.sh` 有 scrollH/innerH/scrollTop 回归断言）。编辑器尺寸用
     `styles.css` 的 `.yh-olap-cm-host .cm-editor{height:100%}` 负责；
-  - **Tab 接受补全**：`Prec.highest(keymap.of([...tabKey]))` 里 `Tab` 在补全弹层打开时调
-    `acceptCompletion`（返回 true 消费按键），弹层未打开时返回 false 回落到 `indentWithTab`
-    （Tab 缩进 / Shift-Tab 反缩进）；不要在普通 keymap 里直接绑 Tab，否则会盖掉补全或缩进；
+  - **Tab / Shift-Tab 策略**（`Prec.highest` 自定义 keymap，verify.sh 有 5 条浏览器断言）：
+    ① 补全弹层打开 → Tab 接受当前项并插入（函数自动 `name()`）；
+    ② 有选区 → Tab / Shift-Tab 对选中行整行缩进 / 反缩进（`indentMore`/`indentLess`，
+    `indentUnit.of('    ')` 统一 4 空格）；
+    ③ 无选区 → Tab 只在光标处插入软缩进（补到下一个 4 空格制表位），**不整行缩进**；
+    Shift-Tab 不触发整行反缩进（no-op）。**不要**在普通 keymap 里再绑 Tab / `indentWithTab`，
+    否则会盖掉这套策略；
   - tab.sql 是唯一事实源：docChanged → 立即写 tab.sql、800ms 自动落盘；外部写入由 props
     `sql` 变化触发一次 dispatch 同步。
 - **面板/样式**：容器查询 `container-type:inline-size`；<720px 默认收起左树（首次测量决策，
