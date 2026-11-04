@@ -149,8 +149,9 @@ cd .. && node --test test/unit/*.test.mjs
 - **弹窗/菜单**：面板层统一 `createPortal(..., document.body)`，避免右侧栏裁剪/层叠。
   **尺寸修饰类必须写成 `.yh-olap-modal.yh-olap-xxx`（双类名）或放在基础 `.yh-olap-modal` 之后**
   ——基础规则 `width:340px` 在样式表靠后，单类名的尺寸修饰会被它覆盖（下载详情弹窗曾因此
-  只有 340px 宽）。下载详情弹窗 `.yh-olap-dlmodal`：960px 宽、88vh 高、`dlbody` 内容区滚动、
-  footer 固定。verify.sh 有合成 DOM 的宽度/滚动断言。
+  只有 340px 宽）。下载详情弹窗 `.yh-olap-dlmodal`：960px 宽、88vh 高、`dlbody` 内容区滚动；
+  关闭不用底部大按钮，用右上角小 `×`（`.yh-olap-dlclose`，24px、hover 圆角底）。
+  verify.sh 有合成 DOM 的宽度/滚动/关闭按钮位置断言。
 
 ## 安装 / 卸载
 

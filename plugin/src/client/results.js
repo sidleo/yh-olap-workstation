@@ -199,6 +199,7 @@ function DownloadDetailModal(props) {
   const row = function (label, val) { return h('span', null, label + ': ', h('b', null, val || '-')) }
   return h('div', { className: 'yh-olap-mask', onClick: close },
     h('div', { className: 'yh-olap-modal yh-olap-dlmodal', onClick: function (e) { e.stopPropagation() } },
+      h('button', { className: 'yh-olap-dlclose', title: '关闭', onClick: close }, '×'),
       h('h4', null, '下载工单详情 #' + d.id),
       h('div', { className: 'yh-olap-dlbody' },
         h('div', { className: 'yh-olap-dlmeta' },
@@ -214,9 +215,7 @@ function DownloadDetailModal(props) {
           row('requestId', d.requestId),
           row('downLoadRequestId', d.downLoadRequestId)),
         h('div', { className: 'yh-olap-dlsql' }, d.querySql || '(无 SQL)'),
-        d.errorMsg ? h('div', { className: 'yh-olap-dlerr' }, d.errorMsg) : null),
-      h('div', { className: 'row yh-olap-dlfoot', style: { marginTop: 10 } },
-        h('button', { className: 'pri', onClick: close }, '关闭'))))
+        d.errorMsg ? h('div', { className: 'yh-olap-dlerr' }, d.errorMsg) : null)))
 }
 
 // ===== WORKSTATION: 日志渲染 —— 错误行/错误信息标红 =====
