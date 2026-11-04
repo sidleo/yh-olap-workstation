@@ -343,7 +343,9 @@ export function OlapPanel(props) {
   const st = useStore(sid)
   const rootRef = useRef(null)
   const apiRef = useRef(null)
-  const [dark, setDark] = useState(false)
+  const [dark, setDark] = useState(function () {
+    try { return document.body.hasAttribute('data-ds-dark-theme') } catch (e) { return false }
+  })
   const [ready, setReady] = useState(false)
   const bump = function () {
     st.version++

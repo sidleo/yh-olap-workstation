@@ -106,6 +106,13 @@ cd .. && node --test test/unit/*.test.mjs
     整屏高、插在 `#root` 之后，页面 `scrollHeight` 翻倍 → 整个 DSH 出现异常滚动
     （2026-11 已修；`test/verify.sh` 有 scrollH/innerH/scrollTop 回归断言）。编辑器尺寸用
     `styles.css` 的 `.yh-olap-cm-host .cm-editor{height:100%}` 负责；
+  - **补全/悬浮弹层的深浅色**：`tooltips({parent})` 的容器必须用 `editor.js` 自建的
+    `.yh-olap-cm-tooltip-host`（带 `data-yh-theme`，随面板主题同步），颜色由 `styles.css`
+    里该宿主的两套 `--yh-tip-*` 变量 + `!important` 显式给出。**不要**用
+    `var(--dsw-alias-brand-primary)` 当选中行背景再配 `#fff` 文字（深色主题下
+    brand-primary 接近白色 → 白字白底），也不要把配色交给 CM 的 `&light/&dark` 类
+    （主题热切换后 tooltip 容器类可能滞后，深色下弹层仍白底）。verify.sh 有深色模式断言
+    （弹层背景亮度 < 0.35、选中/普通行对比度 ≥ 3）。
   - **Tab / Shift-Tab 策略**（`Prec.highest` 自定义 keymap，verify.sh 有 5 条浏览器断言）：
     ① 补全弹层打开 → Tab 接受当前项并插入（函数自动 `name()`）；
     ② 有选区 → Tab / Shift-Tab 对选中行整行缩进 / 反缩进（`indentMore`/`indentLess`，

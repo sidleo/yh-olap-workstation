@@ -78,7 +78,9 @@ const baseTheme = EditorView.theme({
   '.cm-textfield': { backgroundColor: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: '6px', padding: '2px 6px' },
   '.cm-button': { backgroundColor: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)', border: '1px solid var(--dsw-alias-border-l2)', backgroundImage: 'none', borderRadius: '6px' },
   '.cm-tooltip': { backgroundColor: 'var(--dsw-alias-bg-overlay)', color: 'var(--dsw-alias-label-primary)', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: '8px', boxShadow: '0 6px 20px rgba(0,0,0,.35)' },
-  '.cm-tooltip-autocomplete > ul > li[aria-selected]': { backgroundColor: 'var(--dsw-alias-brand-primary)', color: '#fff' },
+  // 补全列表的「类型」列（函数/表/字段/库…）右对齐：li 是 flex，detail 用 margin-left:auto 推到最右。
+  // 注意 tooltip 被挂在 document.body（tooltips({parent:document.body})），这里必须走 theme 规则才能命中。
+  '.cm-tooltip-autocomplete .cm-completionDetail': { marginLeft: 'auto', paddingLeft: '18px', flexShrink: 0, fontStyle: 'normal', color: 'var(--dsw-alias-label-tertiary)', fontSize: '11px' },
 })
 const highlightStyle = HighlightStyle.define([
   { tag: tags.keyword, color: 'var(--yh-k)' },
@@ -257,6 +259,7 @@ function cacheKey(sid, tabId) { return String(sid) + '|' + String(tabId) }
 export function SqlEditor(props) {
   const hostRef = useRef(null)
   const statusRef = useRef(null)
+  const tipHostRef = useRef(null)
   const viewRef = useRef(null)
   const propsRef = useRef(props)
   propsRef.current = props
@@ -271,7 +274,7 @@ export function SqlEditor(props) {
 
   function currentTab() { return activeTab(propsRef.current.st) }
 
-  function buildExtensions(initialEngine, initialDark) {
+  function buildExtensions(initialEngine, initialDark, tipHost) {
     const runKey = {
       key: 'Mod-Enter',
       run: function (view) {
@@ -381,7 +384,7 @@ export function SqlEditor(props) {
       highlightActiveLine(),
       highlightSelectionMatches(),
       search({ top: false }),
-      tooltips({ parent: document.body }),
+      tooltips({ parent: tipHost || document.body }),
       paramHighlight,
       syntaxHighlighting(highlightStyle),
       baseTheme,
@@ -424,7 +427,14 @@ export function SqlEditor(props) {
     const t0 = currentTab()
     const key = cacheKey(p.sid, t0 ? t0.id : 0)
     const cached = stateCache.get(key)
-    const startDoc = (cached && cached.state.doc.toString() === (t0 ? t0.sql : '')) ? cached.state : EditorState.create({ doc: t0 ? t0.sql : '', extensions: buildExtensions(engine, props.dark) })
+    // CM 的 tooltip 容器挂到 body 时拿不到「面板主题」上下文；这里自建宿主并显式标主题，
+    // 配合 styles.css 的主题变量保证弹层在深浅色下都是对比正确的配色（不依赖 CM 的 &light/&dark 类）。
+    const tipHost = document.createElement('div')
+    tipHost.className = 'yh-olap-cm-tooltip-host'
+    tipHost.setAttribute('data-yh-theme', props.dark ? 'dark' : 'light')
+    document.body.appendChild(tipHost)
+    tipHostRef.current = tipHost
+    const startDoc = (cached && cached.state.doc.toString() === (t0 ? t0.sql : '')) ? cached.state : EditorState.create({ doc: t0 ? t0.sql : '', extensions: buildExtensions(engine, props.dark, tipHost) })
     const view = new EditorView({ state: startDoc, parent: host })
     viewRef.current = view
     prevRef.current = { sid: p.sid, tabId: t0 ? t0.id : 0 }
@@ -445,6 +455,7 @@ export function SqlEditor(props) {
       if (cur) stateCache.set(cacheKey(propsRef.current.sid, cur.id), { state: view.state, top: view.scrollDOM.scrollTop, left: view.scrollDOM.scrollLeft })
       if (propsRef.current.onApi) propsRef.current.onApi(null)
       try { view.destroy() } catch (e) {}
+      if (tipHostRef.current) { try { tipHostRef.current.remove() } catch (e) {} tipHostRef.current = null }
       viewRef.current = null
     }
   }, [])
@@ -463,7 +474,7 @@ export function SqlEditor(props) {
       view.setState(cached.state)
       try { view.scrollDOM.scrollTop = cached.top || 0; view.scrollDOM.scrollLeft = cached.left || 0 } catch (e) {}
     } else {
-      view.setState(EditorState.create({ doc: sql, extensions: buildExtensions(engine, props.dark) }))
+      view.setState(EditorState.create({ doc: sql, extensions: buildExtensions(engine, props.dark, tipHostRef.current) }))
     }
     try { view.focus() } catch (e) {}
     updateStatus(view, statusRef.current)
@@ -494,6 +505,7 @@ export function SqlEditor(props) {
   useEffect(function () {
     const view = viewRef.current
     if (!view) return
+    if (tipHostRef.current) tipHostRef.current.setAttribute('data-yh-theme', props.dark ? 'dark' : 'light')
     view.dispatch({ effects: comps.theme.reconfigure(EditorView.theme({}, { dark: !!props.dark })) })
   }, [props.dark])
 

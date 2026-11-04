@@ -80,7 +80,7 @@
 .yh-olap-scroll{position:absolute;inset:0;overflow:auto;padding:8px 10px;box-sizing:border-box}
 .yh-olap-log{position:absolute;inset:0;overflow:auto;padding:8px 10px;box-sizing:border-box;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--dsw-alias-label-primary,#b9c6d4);margin:0}
 .yh-olap-log-line{white-space:pre-wrap;line-height:1.5;word-break:break-all}
-.yh-olap-log-line.err{color:#ff6b6b}
+.yh-olap-log-line.err{color:var(--yh-ui-danger,#e5484d)}
 .yh-olap-table{width:100%;border-collapse:separate;border-spacing:0;font-size:12px}
 .yh-olap-table th,.yh-olap-table td{border-right:1px solid var(--dsw-alias-border-l1,#2a3646);border-bottom:1px solid var(--dsw-alias-border-l1,#2a3646);padding:4px 8px;text-align:left;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:18px}
 .yh-olap-table thead th{background:var(--dsw-alias-bg-layer-1,#1a2230);color:var(--dsw-alias-label-primary,#d7e2ee);position:sticky;top:-8px;z-index:6;box-shadow:inset 0 -1px 0 var(--dsw-alias-border-l2,#3a4a60);border-bottom:1px solid var(--dsw-alias-border-l2,#3a4a60)}
@@ -231,3 +231,16 @@
 .yh-olap-table .yh-olap-th-idx,.yh-olap-table .yh-olap-td-idx{width:34px;min-width:34px;text-align:right;color:var(--dsw-alias-label-tertiary,#6b7a8c);background:var(--dsw-alias-bg-layer-1,#171d26);position:sticky;left:0;z-index:5;font-variant-numeric:tabular-nums}
 .yh-olap-table thead .yh-olap-th-idx{z-index:12}
 .yh-olap-table .yh-olap-null{color:var(--dsw-alias-label-tertiary,#6b7a8c);font-style:italic;font-size:10.5px}
+
+/* ================= CM 补全/悬浮弹层：显式双主题配色 =================
+   tooltip 宿主是 editor.js 动态创建、挂在 body 上的 .yh-olap-cm-tooltip-host，
+   并带 data-yh-theme（由面板主题同步）。这里直接给死两套颜色，不依赖
+   CM 的 &light/&dark 类（主题热切换后类可能滞后）也不依赖工具层能取到 DSH 变量。 */
+.yh-olap-cm-tooltip-host[data-yh-theme="light"]{--yh-tip-bg:#ffffff;--yh-tip-fg:#1f2937;--yh-tip-muted:#6b7280;--yh-tip-border:#e3e6ea;--yh-tip-sel:rgba(65,118,230,.14);--yh-tip-sel-fg:#1f2937}
+.yh-olap-cm-tooltip-host[data-yh-theme="dark"]{--yh-tip-bg:#20242c;--yh-tip-fg:#e8eef4;--yh-tip-muted:#93a1b3;--yh-tip-border:#374151;--yh-tip-sel:rgba(77,140,255,.26);--yh-tip-sel-fg:#e8eef4}
+.yh-olap-cm-tooltip-host .cm-tooltip{background:var(--yh-tip-bg)!important;color:var(--yh-tip-fg)!important;border-color:var(--yh-tip-border)!important}
+.yh-olap-cm-tooltip-host .cm-tooltip-autocomplete > ul{background:var(--yh-tip-bg)!important;color:var(--yh-tip-fg)!important}
+.yh-olap-cm-tooltip-host .cm-tooltip-autocomplete > ul > li{color:var(--yh-tip-fg)!important}
+.yh-olap-cm-tooltip-host .cm-tooltip-autocomplete > ul > li[aria-selected]{background:var(--yh-tip-sel)!important;color:var(--yh-tip-sel-fg)!important}
+.yh-olap-cm-tooltip-host .cm-completionDetail{color:var(--yh-tip-muted)!important}
+.yh-olap-cm-tooltip-host .yh-cm-hover{background:var(--yh-tip-bg)!important;color:var(--yh-tip-fg)!important;border-color:var(--yh-tip-border)!important}

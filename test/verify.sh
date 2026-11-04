@@ -30,6 +30,7 @@ PORT="${PORT:-5275}"
 DSH_BIN="${DSH_BIN:-dsh}"
 PNPM_BIN="${PNPM_BIN:-pnpm}"
 BASE="http://127.0.0.1:${PORT}"
+BBASE="http://localhost:${PORT}"
 LOG="$VHOME/dsh.log"
 REQUIRE_BROWSER="${REQUIRE_BROWSER:-1}"
 KEEP="${KEEP:-0}"
@@ -178,7 +179,7 @@ elif ! command -v ego-browser >/dev/null 2>&1; then
 else
   BROWSER_OUT="$VHOME/browser.log"
   ego-browser nodejs >"$BROWSER_OUT" 2>&1 <<EOF
-const BASE = "${BASE}"
+const BASE = "${BBASE}"
 const TOKEN = "${TOKEN}"
 const task = await taskSpace("yh-olap verify " + Date.now())
 const page = task.page("p1")
@@ -267,6 +268,41 @@ if (rect) {
   const afterCollapsedShift = await readDoc()
   log('collapsedShiftTabNoop', beforeCollapsedShift === afterCollapsedShift)
 }
+// 深色模式回归（用户反馈：深色下补全白字白底/选中行消失）
+await page.evaluate(() => document.body.setAttribute('data-ds-dark-theme', ''))
+await page.waitForTimeout(800)
+log('darkPanelTheme', await page.evaluate(() => { const p = document.querySelector('.yh-olap-panel'); return p ? p.getAttribute('data-yh-theme') : null }))
+if (rect) {
+  await page.mouse.click(rect.x, rect.y)
+  await page.keyboard.press('ControlOrMeta+a')
+  await page.keyboard.type('select dd', { delay: 30 })
+  await page.waitForTimeout(1400)
+}
+const darkColors = await page.evaluate(() => {
+  const parse = function (c) { const m = String(c).match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/); return m ? { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : +m[4] } : null }
+  const blend = function (fg, bg) { return fg && bg ? { r: fg.r * fg.a + bg.r * (1 - fg.a), g: fg.g * fg.a + bg.g * (1 - fg.a), b: fg.b * fg.a + bg.b * (1 - fg.a), a: 1 } : null }
+  const lum = function (c) { if (!c) return null; const f = function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b) }
+  const contrast = function (a, b) { const l1 = Math.max(lum(a), lum(b)); const l2 = Math.min(lum(a), lum(b)); return Math.round(((l1 + 0.05) / (l2 + 0.05)) * 100) / 100 }
+  const tip = document.querySelector('.cm-tooltip-autocomplete')
+  const lis = tip ? Array.from(tip.querySelectorAll('ul > li')) : []
+  const sel = lis.find(function (li) { return li.getAttribute('aria-selected') === 'true' })
+  const normal = lis.find(function (li) { return li.getAttribute('aria-selected') !== 'true' })
+  const tipBg = tip ? parse(getComputedStyle(tip).backgroundColor) : null
+  const selBg = sel ? blend(parse(getComputedStyle(sel).backgroundColor), tipBg) : null
+  const selFg = sel ? blend(parse(getComputedStyle(sel).color), selBg) : null
+  const normFg = normal ? blend(parse(getComputedStyle(normal).color), tipBg) : null
+  return {
+    tipBg: tip ? getComputedStyle(tip).backgroundColor : '',
+    tipDark: tipBg ? lum(tipBg) < 0.35 : false,
+    selContrast: selBg && selFg ? contrast(selBg, selFg) : 0,
+    normalContrast: tipBg && normFg ? contrast(tipBg, normFg) : 0,
+  }
+})
+log('darkTipDark', darkColors.tipDark)
+log('darkSelContrast', darkColors.selContrast)
+log('darkNormalContrast', darkColors.normalContrast)
+await page.evaluate(() => document.body.removeAttribute('data-ds-dark-theme'))
+await page.waitForTimeout(600)
 // 回归：OLAP 打开不得让 DSH 页面出现滚动（历史 bug：CM tooltip 容器被主题 height:100% 撑出视口）
 log('scrollH', await page.evaluate(() => document.documentElement.scrollHeight))
 log('innerH', await page.evaluate(() => window.innerHeight))
@@ -299,6 +335,12 @@ EOF
     echo "$J" | grep -q '"selectedTabIndented=true"' && ok "有选区 Tab 整行缩进（4 空格）" || bad "有选区 Tab 未整行缩进"
     echo "$J" | grep -q '"selectedShiftTabRestored=true"' && ok "有选区 Shift+Tab 反缩进还原" || bad "有选区 Shift+Tab 未还原"
     echo "$J" | grep -q '"collapsedShiftTabNoop=true"' && ok "无选区 Shift+Tab 不整行反缩进" || bad "无选区 Shift+Tab 仍整行反缩进"
+    echo "$J" | grep -q '"darkPanelTheme=dark"' && ok "深色模式下方面板主题切换" || bad "深色模式下方面板主题未切换（$(echo "$J" | grep -o '"darkPanelTheme=[^,]*' | head -1)）"
+    echo "$J" | grep -q '"darkTipDark=true"' && ok "深色模式补全弹层背景为深色" || bad "深色模式补全弹层背景仍为浅色"
+    DS="$(echo "$J" | grep -o '"darkSelContrast=[0-9.]*"' | head -1 | cut -d= -f2 | tr -d '"')"
+    DN="$(echo "$J" | grep -o '"darkNormalContrast=[0-9.]*"' | head -1 | cut -d= -f2 | tr -d '"')"
+    if awk -v v="${DS:-0}" 'BEGIN{exit !(v>=3)}'; then ok "深色模式补全选中行对比度 ${DS}（>=3）"; else bad "深色模式补全选中行对比度过低（${DS:-?}）"; fi
+    if awk -v v="${DN:-0}" 'BEGIN{exit !(v>=3)}'; then ok "深色模式补全普通行对比度 ${DN}（>=3）"; else bad "深色模式补全普通行对比度过低（${DN:-?}）"; fi
     SH="$(echo "$J" | grep -o '"scrollH=[0-9]*"' | head -1 | cut -d= -f2 | tr -d '"')"
     IH="$(echo "$J" | grep -o '"innerH=[0-9]*"' | head -1 | cut -d= -f2 | tr -d '"')"
     ST="$(echo "$J" | grep -o '"scrollTopAfter=[0-9-]*"' | head -1 | cut -d= -f2 | tr -d '"')"
