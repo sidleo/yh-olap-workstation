@@ -1,6 +1,6 @@
 {
   "name": "dsh-yh-olap-workstation",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "yh-olap 右侧栏工具：永辉 OLAP 的 SQL 编辑/执行/结果面板（per-session 持久化，impala/hive 引擎词表与补全）。",
   "type": "module",
   "main": "./src/host.js",

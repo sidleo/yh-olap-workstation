@@ -17,7 +17,7 @@ import {
 } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { bracketMatching, foldGutter, foldKeymap, indentOnInput, syntaxHighlighting, HighlightStyle } from '@codemirror/language'
-import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from '@codemirror/autocomplete'
+import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap, completionStatus, acceptCompletion } from '@codemirror/autocomplete'
 import { search, searchKeymap, openSearchPanel, selectNextOccurrence, highlightSelectionMatches } from '@codemirror/search'
 import { sql, SQLDialect } from '@codemirror/lang-sql'
 import { tags } from '@lezer/highlight'
@@ -325,6 +325,16 @@ export function SqlEditor(props) {
       if (!t) return null
       try { return completionOptions(p.st, p.sid, t, context.state, context.pos, context.explicit) } catch (e) { return null }
     }
+    // Tab：补全弹层打开时接受当前选中项（主流 SQL 编辑器习惯）；未打开时返回 false，
+    // 继续走下面的 indentWithTab（缩进 / Shift-Tab 反缩进）。
+    const tabKey = {
+      key: 'Tab',
+      run: function (view) {
+        if (completionStatus(view.state) !== 'active') return false
+        acceptCompletion(view)
+        return true
+      },
+    }
     return [
       lineNumbers(),
       highlightActiveLineGutter(),
@@ -360,7 +370,7 @@ export function SqlEditor(props) {
         indentWithTab,
         { key: 'Mod-d', run: selectNextOccurrence },
       ]),
-      Prec.highest(keymap.of([runKey, formatKey, commentKey])),
+      Prec.highest(keymap.of([runKey, formatKey, commentKey, tabKey])),
       EditorView.lineWrapping,
       EditorView.updateListener.of(function (u) {
         if (u.docChanged) onDocChanged(u.view)

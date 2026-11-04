@@ -231,6 +231,15 @@ log('completion', await page.evaluate(() => {
   const el = document.querySelector('.cm-tooltip-autocomplete')
   return el ? [...el.querySelectorAll('li')].map(li => li.textContent).slice(0, 10).join(',') : ''
 }))
+// Tab 接受补全（新增交互）：弹层打开时 Tab 应选中当前项并插入，而不是缩进
+let docAfterTab = ''
+if (rect) {
+  await page.keyboard.press('Tab')
+  await page.waitForTimeout(600)
+  docAfterTab = await page.evaluate(() => (document.querySelector('.cm-content') || {}).innerText || '')
+}
+log('docAfterTab', JSON.stringify(docAfterTab))
+log('completionOpenAfterTab', await page.evaluate(() => !!document.querySelector('.cm-tooltip-autocomplete')))
 // 回归：OLAP 打开不得让 DSH 页面出现滚动（历史 bug：CM tooltip 容器被主题 height:100% 撑出视口）
 log('scrollH', await page.evaluate(() => document.documentElement.scrollHeight))
 log('innerH', await page.evaluate(() => window.innerHeight))
@@ -256,6 +265,8 @@ EOF
     echo "$J" | grep -q '"panel=true"' && ok "点击后 OLAP tab 正文挂载" || bad "OLAP tab 正文未挂载"
     echo "$J" | grep -q '"cm=true"' && ok "CodeMirror 编辑器挂载" || bad "CodeMirror 编辑器未挂载"
     echo "$J" | grep -q 'ndv' && ok "impala 补全包含函数 ndv" || bad "impala 补全缺少 ndv（$(echo "$J" | grep -o '"completion=[^,]*' | head -1)）"
+    echo "$J" | grep -q '"docAfterTab=.*ndv()' && ok "Tab 接受补全（插入 ndv()）" || bad "Tab 未接受补全（$(echo "$J" | grep -o '"docAfterTab=[^,]*' | head -1)）"
+    echo "$J" | grep -q '"completionOpenAfterTab=false"' && ok "Tab 接受后补全弹层关闭" || bad "Tab 接受后补全弹层未关闭"
     SH="$(echo "$J" | grep -o '"scrollH=[0-9]*"' | head -1 | cut -d= -f2 | tr -d '"')"
     IH="$(echo "$J" | grep -o '"innerH=[0-9]*"' | head -1 | cut -d= -f2 | tr -d '"')"
     ST="$(echo "$J" | grep -o '"scrollTopAfter=[0-9-]*"' | head -1 | cut -d= -f2 | tr -d '"')"
