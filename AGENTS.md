@@ -113,8 +113,10 @@ cd .. && node --test test/unit/*.test.mjs
     brand-primary 接近白色 → 白字白底），也不要把配色交给 CM 的 `&light/&dark` 类
     （主题热切换后 tooltip 容器类可能滞后，深色下弹层仍白底）。verify.sh 有深色模式断言
     （弹层背景亮度 < 0.35、选中/普通行对比度 ≥ 3）。
-    补全列表右侧的「函数/表/字段」类型列用 theme 里 `.cm-completionDetail{margin-left:auto}`
-    右对齐（tooltip 挂 body 时靠 theme 类命中，别改成全局 CSS）。
+    补全列表右侧的「函数/表/字段」类型列：**必须**把 `.cm-tooltip-autocomplete > ul > li`
+    设成 `display:flex`，再给 `.cm-completionDetail{margin-left:auto}` 才会右对齐（CM 默认
+    li 是块级、detail 是 inline span，单靠 auto margin 无效）；label 配 `min-width:0` +
+    ellipsis 防止长名字挤压。verify.sh 有「右边缘差 ≤1px」断言。
   - **Tab / Shift-Tab 策略**（`Prec.highest` 自定义 keymap，verify.sh 有 5 条浏览器断言）：
     ① 补全弹层打开 → Tab 接受当前项并插入（函数自动 `name()`）；
     ② 有选区 → Tab / Shift-Tab 对选中行整行缩进 / 反缩进（`indentMore`/`indentLess`，

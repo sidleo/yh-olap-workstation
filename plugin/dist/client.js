@@ -241,6 +241,9 @@ window.__ModuleLoader__.load({
    CM 的 &light/&dark 类（主题热切换后类可能滞后）也不依赖工具层能取到 DSH 变量。 */
 .yh-olap-cm-tooltip-host[data-yh-theme="light"]{--yh-tip-bg:#ffffff;--yh-tip-fg:#1f2937;--yh-tip-muted:#6b7280;--yh-tip-border:#e3e6ea;--yh-tip-sel:rgba(65,118,230,.14);--yh-tip-sel-fg:#1f2937}
 .yh-olap-cm-tooltip-host[data-yh-theme="dark"]{--yh-tip-bg:#20242c;--yh-tip-fg:#e8eef4;--yh-tip-muted:#93a1b3;--yh-tip-border:#374151;--yh-tip-sel:rgba(77,140,255,.26);--yh-tip-sel-fg:#e8eef4}
+.yh-olap-cm-tooltip-host .cm-tooltip-autocomplete > ul > li{display:flex!important;align-items:baseline;min-width:0;overflow:hidden}
+.yh-olap-cm-tooltip-host .cm-tooltip-autocomplete .cm-completionLabel{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.yh-olap-cm-tooltip-host .cm-tooltip-autocomplete .cm-completionDetail{margin-left:auto!important;flex:0 0 auto;white-space:nowrap}
 .yh-olap-cm-tooltip-host .cm-tooltip{background:var(--yh-tip-bg)!important;color:var(--yh-tip-fg)!important;border-color:var(--yh-tip-border)!important}
 .yh-olap-cm-tooltip-host .cm-tooltip-autocomplete > ul{background:var(--yh-tip-bg)!important;color:var(--yh-tip-fg)!important}
 .yh-olap-cm-tooltip-host .cm-tooltip-autocomplete > ul > li{color:var(--yh-tip-fg)!important}

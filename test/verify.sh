@@ -232,6 +232,14 @@ log('completion', await page.evaluate(() => {
   const el = document.querySelector('.cm-tooltip-autocomplete')
   return el ? [...el.querySelectorAll('li')].map(li => li.textContent).slice(0, 10).join(',') : ''
 }))
+// 补全类型列（函数/表/字段）应右对齐：所有 detail 的右边缘应一致
+const detailAlign = await page.evaluate(() => {
+  const details = [...document.querySelectorAll('.cm-tooltip-autocomplete .cm-completionDetail')]
+  const rights = details.map(function (d) { return Math.round(d.getBoundingClientRect().right) })
+  return { count: rights.length, spread: rights.length ? Math.max.apply(null, rights) - Math.min.apply(null, rights) : -1, rights: rights.slice(0, 6) }
+})
+log('completionDetailCount', detailAlign.count)
+log('completionDetailSpread', detailAlign.spread)
 // Tab 接受补全（新增交互）：弹层打开时 Tab 应选中当前项并插入，而不是缩进
 let docAfterTab = ''
 if (rect) {
@@ -328,6 +336,13 @@ EOF
     echo "$J" | grep -q '"panel=true"' && ok "点击后 OLAP tab 正文挂载" || bad "OLAP tab 正文未挂载"
     echo "$J" | grep -q '"cm=true"' && ok "CodeMirror 编辑器挂载" || bad "CodeMirror 编辑器未挂载"
     echo "$J" | grep -q 'ndv' && ok "impala 补全包含函数 ndv" || bad "impala 补全缺少 ndv（$(echo "$J" | grep -o '"completion=[^,]*' | head -1)）"
+    DCNT="$(echo "$J" | grep -o '"completionDetailCount=[0-9]*"' | head -1 | cut -d= -f2 | tr -d '"')"
+    DSPREAD="$(echo "$J" | grep -o '"completionDetailSpread=[0-9-]*"' | head -1 | cut -d= -f2 | tr -d '"')"
+    if [ -n "$DCNT" ] && [ "$DCNT" -ge 2 ] && [ -n "$DSPREAD" ] && [ "$DSPREAD" -le 1 ]; then
+      ok "补全类型列右对齐（${DCNT} 项，右边缘差 ${DSPREAD}px）"
+    else
+      bad "补全类型列未右对齐（count=${DCNT:-?} spread=${DSPREAD:-?}）"
+    fi
     echo "$J" | grep -q '"docAfterTab=.*ndv()' && ok "Tab 接受补全（插入 ndv()）" || bad "Tab 未接受补全（$(echo "$J" | grep -o '"docAfterTab=[^,]*' | head -1)）"
     echo "$J" | grep -q '"completionOpenAfterTab=false"' && ok "Tab 接受后补全弹层关闭" || bad "Tab 接受后补全弹层未关闭"
     echo "$J" | grep -q '"collapsedTabNoLineIndent=true"' && ok "无选区 Tab 不整行缩进" || bad "无选区 Tab 仍整行缩进"
