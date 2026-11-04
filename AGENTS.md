@@ -148,6 +148,11 @@ cd .. && node --test test/unit/*.test.mjs
   **双击复位 0.62**；拖动期间 `body.yh-olap-dragging-row` 全局 row-resize 光标并禁止选中。
   verify.sh 有拖动 Δ≤-25px / 双击复位偏差 ≤15px 断言。改 `styles.css` 注释必须成对：曾出现
   游离注释文本把后续 `.yh-olap-resizer` 基础规则吞进 selector，整条规则静默失效（元素高度变 0）。
+- **底部/左树标签页**：`.yh-olap-tabs` / `.yh-olap-tabs2` 均为 **40px 高、文字底部锚定
+  (padding-bottom 13px)**，文字上方留 14px 空白；选中态用 **20×3px 圆角小指示条**（`bottom:5px`，
+  与文字留 5px、与分隔线留 5px），不要做成贴满文字宽度的 2px 下划线（曾因文字紧贴上方分隔线被反馈）。
+  注意样式表里**同特异性的后置规则会覆盖**：曾有遗留 `.yh-olap-bot-tabs{height:30px;align-items:center}`
+  覆盖了 `.yh-olap-tabs`，导致文字被 padding 顶到上方分隔线；已删除。
 - **时间展示**：历史/下载/详情里的时间统一走 `timefmt.js` 的 `shortT()` → `MM-dd HH:mm`
   （两位补零、24 小时制；后端会返回 `2026-11-04 17:26` 与 `11/4/26 5:02 PM` 两种格式，
   已在函数内归一，禁止在各视图里各写一套）。单测：`test/unit/timefmt.test.mjs`。

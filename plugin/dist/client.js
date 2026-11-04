@@ -69,10 +69,11 @@ window.__ModuleLoader__.load({
 /* 拖动分割条期间：全局 row-resize 光标 + 禁止选中 */
 body.yh-olap-dragging-row,body.yh-olap-dragging-row *{cursor:row-resize!important;user-select:none!important}
 .yh-olap-bot{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
-.yh-olap-tabs{flex:0 0 34px;display:flex;align-items:flex-end;gap:14px;padding:0 12px;border-bottom:1px solid var(--dsw-alias-border-l1,#242d3a);justify-content:flex-start}
-.yh-olap-tabs .yh-olap-btab{flex:0 0 auto;font-size:13px;font-weight:500;padding:0 0 11px;color:var(--dsw-alias-label-secondary,#81858c);cursor:pointer;position:relative;line-height:1}
-.yh-olap-tabs .yh-olap-btab.on{color:var(--yh-ui-brand)}
-.yh-olap-tabs .yh-olap-btab.on::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--yh-ui-brand)}
+.yh-olap-tabs{flex:0 0 40px;display:flex;align-items:flex-end;gap:20px;padding:0 12px;border-bottom:1px solid var(--dsw-alias-border-l1,#242d3a);justify-content:flex-start}
+.yh-olap-tabs .yh-olap-btab{flex:0 0 auto;font-size:13px;font-weight:500;padding:0 2px 13px;color:var(--dsw-alias-label-secondary,#81858c);cursor:pointer;position:relative;line-height:1;transition:color .12s}
+.yh-olap-tabs .yh-olap-btab:hover{color:var(--dsw-alias-label-primary,#cdd7e0)}
+.yh-olap-tabs .yh-olap-btab.on{color:var(--yh-ui-brand);font-weight:600}
+.yh-olap-tabs .yh-olap-btab.on::after{content:'';position:absolute;left:50%;transform:translateX(-50%);bottom:5px;width:20px;height:3px;border-radius:2px;background:var(--yh-ui-brand)}
 .yh-olap-tabsbar{flex:0 0 38px;display:flex;align-items:center;padding:0 8px;background:var(--dsw-alias-bg-layer-1,#171d26);border-bottom:1px solid var(--dsw-alias-border-l1,#242d3a);gap:6px;min-width:0}
 .yh-olap-tabs-wrap{display:flex;align-items:center;gap:2px;overflow:hidden;flex:1 1 auto;min-width:0}
 .yh-olap-tabs-right{display:flex;align-items:center;gap:6px;flex:0 0 auto;margin-left:auto}
@@ -96,10 +97,11 @@ body.yh-olap-dragging-row,body.yh-olap-dragging-row *{cursor:row-resize!importan
 .yh-olap-table tbody td{background:var(--dsw-alias-bg-base,#0f141a)}
 .yh-olap-table tbody tr:nth-child(even) td{background:var(--dsw-alias-bg-layer-2,#131a23)}
 .yh-olap-ltree{flex:1;overflow:auto;min-height:0;padding:4px 0}
-.yh-olap-tabs2{flex:0 0 34px;display:flex;align-items:flex-end;gap:10px;padding:0 10px;border-bottom:1px solid var(--dsw-alias-border-l1,#242d3a)}
-.yh-olap-tabs2 span{flex:0 0 auto;font-size:13px;font-weight:500;padding:0 0 11px;color:var(--dsw-alias-label-secondary,#81858c);cursor:pointer;position:relative;line-height:1}
-.yh-olap-tabs2 span.on{color:var(--yh-ui-brand)}
-.yh-olap-tabs2 span.on::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--yh-ui-brand)}
+.yh-olap-tabs2{flex:0 0 40px;display:flex;align-items:flex-end;gap:18px;padding:0 10px;border-bottom:1px solid var(--dsw-alias-border-l1,#242d3a)}
+.yh-olap-tabs2 span{flex:0 0 auto;font-size:13px;font-weight:500;padding:0 2px 13px;color:var(--dsw-alias-label-secondary,#81858c);cursor:pointer;position:relative;line-height:1;transition:color .12s}
+.yh-olap-tabs2 span:hover{color:var(--dsw-alias-label-primary,#cdd7e0)}
+.yh-olap-tabs2 span.on{color:var(--yh-ui-brand);font-weight:600}
+.yh-olap-tabs2 span.on::after{content:'';position:absolute;left:50%;transform:translateX(-50%);bottom:5px;width:20px;height:3px;border-radius:2px;background:var(--yh-ui-brand)}
 .yh-olap-node{display:flex;align-items:center;gap:4px;padding:1px 6px;line-height:17px;cursor:pointer;white-space:nowrap;color:var(--dsw-alias-label-primary,#b9c6d4)}
 .yh-olap-node:hover{background:var(--dsw-alias-bg-layer-1,#1a2230)}
 .yh-olap-node .tw{color:var(--dsw-alias-label-secondary,#557);display:inline-block;flex:0 0 14px;width:14px;text-align:center}
@@ -192,7 +194,6 @@ body.yh-olap-dragging-row,body.yh-olap-dragging-row *{cursor:row-resize!importan
 .yh-olap-left-close:hover{color:var(--dsw-alias-label-primary)}
 
 /* ================= 底栏状态 ================= */
-.yh-olap-bot-tabs{flex:0 0 30px;height:30px;display:flex;align-items:center;gap:12px;padding:0 10px;background:var(--dsw-alias-bg-layer-1,#171d26);border-bottom:1px solid var(--dsw-alias-border-l1,#242d3a)}
 .yh-olap-bot-state{flex:0 0 auto;margin-left:auto;font-size:10.5px;color:var(--dsw-alias-label-tertiary,#6b7a8c);white-space:nowrap}
 .yh-olap-bot-state.run{color:var(--dsw-alias-state-warn-primary,#d7a04a)}
 .yh-olap-bot-state.err{color:var(--yh-ui-danger)}
