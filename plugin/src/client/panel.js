@@ -401,21 +401,38 @@ export function OlapPanel(props) {
   const tab = activeTab(st)
   const editorRatio = Math.max(0.12, Math.min(0.92, st.editorRatio || 0.62))
 
+  // 编辑器 / 结果区上下分割：拖动分割条调整高度（按像素增量，带最小高度约束；双击复位）
   const startResize = function (downEv) {
     downEv.preventDefault()
     const splitEl = downEv.currentTarget.parentNode
+    const resizer = downEv.currentTarget
+    const editorEl = splitEl ? splitEl.querySelector('.yh-olap-editor-wrap') : null
+    const rect = splitEl ? splitEl.getBoundingClientRect() : null
+    if (!rect || rect.height <= 0) return
+    const startY = downEv.clientY
+    const startH = editorEl ? editorEl.getBoundingClientRect().height : rect.height * editorRatio
+    const MIN_EDITOR = 80
+    const MIN_BOTTOM = 140
+    const maxH = Math.max(MIN_EDITOR, rect.height - MIN_BOTTOM)
+    resizer.classList.add('active')
+    try { document.body.classList.add('yh-olap-dragging-row') } catch (e) {}
     const move = function (ev) {
-      const rect = splitEl.getBoundingClientRect()
-      if (rect.height <= 0) return
-      st.editorRatio = Math.max(0.12, Math.min(0.92, (ev.clientY - rect.top) / rect.height))
+      const h = Math.max(MIN_EDITOR, Math.min(maxH, startH + (ev.clientY - startY)))
+      st.editorRatio = h / rect.height
       emitStore(sid)
     }
     const up = function () {
       window.removeEventListener('mousemove', move)
       window.removeEventListener('mouseup', up)
+      resizer.classList.remove('active')
+      try { document.body.classList.remove('yh-olap-dragging-row') } catch (e) {}
     }
     window.addEventListener('mousemove', move)
     window.addEventListener('mouseup', up)
+  }
+  const resetResize = function () {
+    st.editorRatio = 0.62
+    emitStore(sid)
   }
 
   const portal = function (comp) { return comp ? createPortal(comp, document.body) : null }
@@ -430,7 +447,7 @@ export function OlapPanel(props) {
           h('div', { className: 'yh-olap-editor-wrap', style: { flex: editorRatio * 10, minHeight: 60 } },
             tab ? h(SqlEditor, { st: st, sid: sid, bump: bump, dark: dark, onApi: function (a) { apiRef.current = a } }) : null,
             ready ? null : h('div', { className: 'yh-olap-loading' }, '正在恢复工作区…')),
-          h('div', { className: 'yh-olap-resizer', onMouseDown: startResize, title: '拖动调整编辑器/结果高度' }),
+          h('div', { className: 'yh-olap-resizer', onMouseDown: startResize, onDoubleClick: resetResize, title: '拖动调整编辑器/结果高度（双击恢复默认）' }),
           h('div', { className: 'yh-olap-bot', style: { flex: (1 - editorRatio) * 10 } }, h(BottomBar, { st: st, sid: sid, bump: bump }))))),
     portal(h(CollectSaveModal, { st: st, sid: sid, bump: bump })),
     portal(h(ParamModal, { st: st, sid: sid, bump: bump })),

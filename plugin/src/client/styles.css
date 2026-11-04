@@ -56,14 +56,15 @@
 .yh-olap-func .stop{background:transparent;border-color:var(--yh-ui-danger);color:var(--yh-ui-danger)}
 .yh-olap-func .stop:hover{background:var(--yh-ui-danger-weak)}
 .yh-olap-split{flex:1;display:flex;flex-direction:column;min-height:0}
-   色 #4176e6 / 危险色 #e5484d 统一收敛到这里，换肤/品牌调整只改一处。
-   以 var(--yh-ui-*) 引用；深浅色两套与 --yh-* 高亮变量同规则。
-   --yh-ui-gutter-bg：编辑器行号区（gutter）底色 —— 浅色下用浅灰与白色代码区
-   区分，深色下沿用原层色（--dsw-alias-bg-layer-2）不变。===== */
-   的 4px 左 padding 之后才开始 —— 所以必须 left/right=4px 才能与文本区左右对齐（四边 padding
-   一致，改 padding 必须同时改这里，否则色条会与文字错位）。
-   原值 left/right:-12px 会让色条从文字左缘再往左伸 24px（用户实测"像多了一个空格"，误导缩进判断）。 */
-.yh-olap-resizer{flex:0 0 6px;cursor:row-resize;background:var(--dsw-alias-border-l1,#242d3a)}
+.yh-olap-resizer{position:relative;flex:0 0 9px;cursor:row-resize;touch-action:none;z-index:5;
+  background:var(--dsw-alias-bg-layer-1,#171d26);
+  border-top:1px solid var(--dsw-alias-border-l1,#242d3a);
+  border-bottom:1px solid var(--dsw-alias-border-l1,#242d3a)}
+.yh-olap-resizer::before{content:'';position:absolute;left:50%;top:50%;width:56px;height:4px;margin:-2px 0 0 -28px;border-radius:2px;background:var(--dsw-alias-label-tertiary,#8a9aae);opacity:.55;transition:background .12s,width .12s,opacity .12s}
+.yh-olap-resizer:hover{background:var(--dsw-alias-bg-layer-2,#1d2633)}
+.yh-olap-resizer:hover::before,.yh-olap-resizer.active::before{background:var(--yh-ui-brand);width:64px;opacity:1}
+/* 拖动分割条期间：全局 row-resize 光标 + 禁止选中 */
+body.yh-olap-dragging-row,body.yh-olap-dragging-row *{cursor:row-resize!important;user-select:none!important}
 .yh-olap-bot{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .yh-olap-tabs{flex:0 0 34px;display:flex;align-items:flex-end;gap:14px;padding:0 12px;border-bottom:1px solid var(--dsw-alias-border-l1,#242d3a);justify-content:flex-start}
 .yh-olap-tabs .yh-olap-btab{flex:0 0 auto;font-size:13px;font-weight:500;padding:0 0 11px;color:var(--dsw-alias-label-secondary,#81858c);cursor:pointer;position:relative;line-height:1}

@@ -256,6 +256,33 @@ await page.evaluate(() => {
   if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change', { bubbles: true })) }
 })
 await page.waitForTimeout(900)
+
+// 编辑器/结果区上下分割：拖动分割条调整高度、双击复位
+const splitBefore = await page.evaluate(() => {
+  const r = document.querySelector('.yh-olap-resizer')
+  const e = document.querySelector('.yh-olap-editor-wrap')
+  if (!r || !e) return null
+  const rr = r.getBoundingClientRect(); const er = e.getBoundingClientRect()
+  return { x: Math.round(rr.x + rr.width / 2), y: Math.round(rr.y + rr.height / 2), h: Math.round(er.height) }
+})
+let splitDragDelta = 0
+let splitResetDelta = -1
+if (splitBefore) {
+  await page.mouse.move(splitBefore.x, splitBefore.y, { label: 'move to splitter' })
+  await page.mouse.down()
+  for (let k = 1; k <= 8; k++) await page.mouse.move(splitBefore.x, splitBefore.y - 10 * k)
+  await page.mouse.up()
+  await page.waitForTimeout(400)
+  const hAfter = await page.evaluate(() => { const e = document.querySelector('.yh-olap-editor-wrap'); return e ? Math.round(e.getBoundingClientRect().height) : 0 })
+  splitDragDelta = hAfter - splitBefore.h
+  await page.dblclick('.yh-olap-resizer', { label: 'reset splitter' })
+  await page.waitForTimeout(400)
+  const hReset = await page.evaluate(() => { const e = document.querySelector('.yh-olap-editor-wrap'); return e ? Math.round(e.getBoundingClientRect().height) : 0 })
+  splitResetDelta = Math.abs(hReset - splitBefore.h)
+}
+log('splitDragDelta', splitDragDelta)
+log('splitResetDelta', splitResetDelta)
+
 const rect = await page.evaluate(() => { const el = document.querySelector('.cm-content'); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + 30, y: r.top + 20 } })
 if (rect) {
   await page.mouse.click(rect.x, rect.y, { label: 'focus editor' })
@@ -429,6 +456,10 @@ EOF
     echo "$J" | grep -q '"treeHiddenAgain=true"' && ok "再次点击可收起库表/收藏" || bad "无法再次收起库表/收藏"
     echo "$J" | grep -q '"sessionHiveEnabled=true"' && ok "hive 引擎下 Session 参数可用（无需先写 SQL）" || bad "hive 引擎下 Session 参数仍不可用"
     echo "$J" | grep -q '"sessionModalOpen=true"' && ok "Session 参数弹窗可打开" || bad "Session 参数弹窗打不开"
+    SDD="$(echo "$J" | grep -o '"splitDragDelta=-*[0-9]*"' | head -1 | cut -d= -f2 | tr -d '"')"
+    SRD="$(echo "$J" | grep -o '"splitResetDelta=-*[0-9]*"' | head -1 | cut -d= -f2 | tr -d '"')"
+    if [ -n "$SDD" ] && [ "$SDD" -le -25 ]; then ok "拖动分割条可调整上下区域高度（Δ${SDD}px）"; else bad "拖动分割条未生效（Δ${SDD:-?}px）"; fi
+    if [ -n "$SRD" ] && [ "$SRD" -ge 0 ] && [ "$SRD" -le 15 ]; then ok "双击分割条可恢复默认高度（偏差 ${SRD}px）"; else bad "双击分割条复位异常（偏差 ${SRD:-?}px）"; fi
     echo "$J" | grep -q 'ndv' && ok "impala 补全包含函数 ndv" || bad "impala 补全缺少 ndv（$(echo "$J" | grep -o '"completion=[^,]*' | head -1)）"
     DCNT="$(echo "$J" | grep -o '"completionDetailCount=[0-9]*"' | head -1 | cut -d= -f2 | tr -d '"')"
     DSPREAD="$(echo "$J" | grep -o '"completionDetailSpread=[0-9-]*"' | head -1 | cut -d= -f2 | tr -d '"')"

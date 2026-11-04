@@ -143,6 +143,11 @@ cd .. && node --test test/unit/*.test.mjs
   （store 默认 `leftCollapsed:true`），由工具栏最左侧的树按钮显式展开/收起，**不按宽度自动展开**；
   <620px 时左树为抽屉覆盖。所有颜色走 `--dsw-alias-*` / 面板内 `--yh-*`，
   不写死浅/深色（`data-yh-theme` 在面板根）。
+- **编辑器/结果区上下分割**：`.yh-olap-resizer`（9px 高、中间胶囊把手，hover 变品牌色）拖动按
+  像素增量调整 `editorRatio`（约束：编辑器 ≥80px、结果区 ≥140px，同步更新 flex）；
+  **双击复位 0.62**；拖动期间 `body.yh-olap-dragging-row` 全局 row-resize 光标并禁止选中。
+  verify.sh 有拖动 Δ≤-25px / 双击复位偏差 ≤15px 断言。改 `styles.css` 注释必须成对：曾出现
+  游离注释文本把后续 `.yh-olap-resizer` 基础规则吞进 selector，整条规则静默失效（元素高度变 0）。
 - **时间展示**：历史/下载/详情里的时间统一走 `timefmt.js` 的 `shortT()` → `MM-dd HH:mm`
   （两位补零、24 小时制；后端会返回 `2026-11-04 17:26` 与 `11/4/26 5:02 PM` 两种格式，
   已在函数内归一，禁止在各视图里各写一套）。单测：`test/unit/timefmt.test.mjs`。
