@@ -215,6 +215,10 @@
 }
 @container (max-width: 620px){
   .yh-olap-tabs-right .yh-olap-accbtn{max-width:104px;padding:0 6px}
+  /* 查找面板：窄面板时选项行移到第三行，避免溢出 */
+  .yh-olap-cm-host .cm-search label:nth-of-type(1){grid-row:3;grid-column:1/3}
+  .yh-olap-cm-host .cm-search label:nth-of-type(2){grid-row:3;grid-column:3/5}
+  .yh-olap-cm-host .cm-search label:nth-of-type(3){grid-row:3;grid-column:5/7}
   .yh-olap-left{position:absolute;left:0;top:0;bottom:0;z-index:30;box-shadow:6px 0 20px rgba(0,0,0,.28)}
   .yh-olap-left-close{display:inline-flex;align-items:center}
 }
@@ -248,11 +252,18 @@
 .yh-olap-cm-tooltip-host .cm-completionDetail{color:var(--yh-tip-muted)!important}
 .yh-olap-cm-tooltip-host .yh-cm-hover{background:var(--yh-tip-bg)!important;color:var(--yh-tip-fg)!important;border-color:var(--yh-tip-border)!important}
 
-/* ================= 查找/替换面板（CM search）：中文化后的紧凑布局 ================= */
+/* ================= 查找/替换面板（CM search）：两行网格布局 =================
+   需求：查找输入框、替换输入框必须上下排列（各占一行）。
+   不用 flex+<br> 换行（不同 Chromium 版本对 flex 里的 <br> 行为不一致，容易变成同一行），
+   改用 grid 明确指定：第 1 行=查找输入+上一个/下一个/全部选中；第 2 行=替换输入+替换/全部替换+选项。 */
 .yh-olap-panel .yh-olap-cm-host .cm-panels{position:relative;background:transparent;border:none;left:0;right:0}
 .yh-olap-panel .yh-olap-cm-host .cm-panels-bottom{border-top:none}
 .yh-olap-panel .yh-olap-cm-host .cm-panel.cm-search{
-  display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto auto auto auto auto;
+  grid-auto-rows:auto;
+  align-items:center;
+  gap:6px 8px;
   padding:8px 34px 8px 10px;margin:0;position:relative;
   background:var(--dsw-alias-bg-layer-1,#171d26);
   border-top:1px solid var(--dsw-alias-border-l1,#242d3a);
@@ -261,36 +272,45 @@
 .yh-olap-panel .yh-olap-cm-host .cm-panel.cm-search input,
 .yh-olap-panel .yh-olap-cm-host .cm-panel.cm-search button,
 .yh-olap-panel .yh-olap-cm-host .cm-panel.cm-search label{margin:0}
+/* 输入框：上下两行各一个，第一列对齐全宽自适应 */
 .yh-olap-panel .yh-olap-cm-host .cm-search .cm-textfield{
-  order:1;flex:1 1 160px;min-width:110px;height:26px;padding:0 8px;box-sizing:border-box;
+  grid-column:1;min-width:0;height:26px;padding:0 8px;box-sizing:border-box;
   border-radius:6px;border:1px solid var(--dsw-alias-border-l2,#33455a);
   background:var(--dsw-alias-bg-layer-2,#1d2633);color:var(--dsw-alias-label-primary);
   font-size:12px;outline:none;
 }
+.yh-olap-panel .yh-olap-cm-host .cm-search .cm-textfield[name=search]{grid-row:1}
+.yh-olap-panel .yh-olap-cm-host .cm-search .cm-textfield[name=replace]{grid-row:2}
 .yh-olap-panel .yh-olap-cm-host .cm-search .cm-textfield::placeholder{color:var(--dsw-alias-label-tertiary)}
 .yh-olap-panel .yh-olap-cm-host .cm-search .cm-textfield:focus{border-color:var(--yh-ui-brand)}
+/* 按钮：按行放到输入框右侧 */
 .yh-olap-panel .yh-olap-cm-host .cm-search .cm-button{
-  order:2;height:26px;padding:0 10px;border-radius:6px;font-size:12px;line-height:1;
+  height:26px;padding:0 10px;border-radius:6px;font-size:12px;line-height:1;
   border:1px solid var(--dsw-alias-border-l2,#33455a);
   background:var(--dsw-alias-bg-layer-2,#1d2633);color:var(--dsw-alias-label-primary);
-  background-image:none;cursor:pointer;flex:0 0 auto;white-space:nowrap;
+  background-image:none;cursor:pointer;white-space:nowrap;justify-self:start;
 }
 .yh-olap-panel .yh-olap-cm-host .cm-search .cm-button:hover{background:var(--dsw-alias-bg-layer-3,#243044)}
 .yh-olap-panel .yh-olap-cm-host .cm-search .cm-button[name=next],
 .yh-olap-panel .yh-olap-cm-host .cm-search .cm-button[name=replace]{border-color:var(--yh-ui-brand);color:var(--yh-ui-brand)}
 .yh-olap-panel .yh-olap-cm-host .cm-search .cm-button[name=next]:hover,
 .yh-olap-panel .yh-olap-cm-host .cm-search .cm-button[name=replace]:hover{background:var(--yh-ui-brand-weak)}
+.yh-olap-panel .yh-olap-cm-host .cm-search .cm-button[name=next]{grid-row:1;grid-column:2}
+.yh-olap-panel .yh-olap-cm-host .cm-search .cm-button[name=prev]{grid-row:1;grid-column:3}
+.yh-olap-panel .yh-olap-cm-host .cm-search .cm-button[name=select]{grid-row:1;grid-column:4}
+.yh-olap-panel .yh-olap-cm-host .cm-search .cm-button[name=replace]{grid-row:2;grid-column:2}
+.yh-olap-panel .yh-olap-cm-host .cm-search .cm-button[name=replaceAll]{grid-row:2;grid-column:3}
+/* 选项：替换行右侧 */
 .yh-olap-panel .yh-olap-cm-host .cm-search label{
-  order:9;display:inline-flex;align-items:center;gap:4px;
+  display:inline-flex;align-items:center;gap:4px;justify-self:start;
   font-size:11.5px;color:var(--dsw-alias-label-secondary,#8a9aae);white-space:nowrap;
 }
-.yh-olap-panel .yh-olap-cm-host .cm-search label:nth-of-type(2){order:10}
-.yh-olap-panel .yh-olap-cm-host .cm-search label:nth-of-type(3){order:11}
+.yh-olap-panel .yh-olap-cm-host .cm-search label:nth-of-type(1){grid-row:2;grid-column:4}
+.yh-olap-panel .yh-olap-cm-host .cm-search label:nth-of-type(2){grid-row:2;grid-column:5}
+.yh-olap-panel .yh-olap-cm-host .cm-search label:nth-of-type(3){grid-row:2;grid-column:6}
 .yh-olap-panel .yh-olap-cm-host .cm-search input[type=checkbox]{accent-color:var(--yh-ui-brand);margin:0;width:13px;height:13px}
-.yh-olap-panel .yh-olap-cm-host .cm-search br{order:5;flex-basis:100%;height:0;margin:0;border:none}
-.yh-olap-panel .yh-olap-cm-host .cm-search .cm-textfield[name=replace]{order:6}
-.yh-olap-panel .yh-olap-cm-host .cm-search .cm-button[name=replace]{order:7}
-.yh-olap-panel .yh-olap-cm-host .cm-search .cm-button[name=replaceAll]{order:8}
+.yh-olap-panel .yh-olap-cm-host .cm-search br{display:none}
+/* 关闭按钮：右上角悬浮 */
 .yh-olap-panel .yh-olap-cm-host .cm-search [name=close]{
   position:absolute;top:6px;right:6px;width:22px;height:22px;padding:0;margin:0;
   display:inline-flex;align-items:center;justify-content:center;

@@ -330,6 +330,7 @@ const sp = await page.evaluate(() => {
     buttons: btns,
     labels: labels,
     twoRows: !!(search && replace && search.getBoundingClientRect().y < replace.getBoundingClientRect().y),
+    stacked: !!(search && replace && replace.getBoundingClientRect().top >= search.getBoundingClientRect().bottom - 0.5),
     searchWidth: search ? Math.round(search.getBoundingClientRect().width) : 0,
   }
 })
@@ -337,6 +338,7 @@ log('searchPanelLocalized', sp.found && sp.placeholders.join(',') === '查找,�
   ['下一个', '上一个', '全部选中', '替换', '全部替换'].every(function (t) { return sp.buttons.indexOf(t) >= 0 }) &&
   ['区分大小写', '正则', '全词匹配'].every(function (t) { return sp.labels.indexOf(t) >= 0 }))
 log('searchPanelTwoRows', !!sp.twoRows)
+log('searchInputsStacked', !!sp.stacked)
 log('searchPanelInputWidth', sp.searchWidth)
 await page.keyboard.press('Escape')
 await page.waitForTimeout(300)
@@ -387,6 +389,7 @@ EOF
     if awk -v v="${DN:-0}" 'BEGIN{exit !(v>=3)}'; then ok "深色模式补全普通行对比度 ${DN}（>=3）"; else bad "深色模式补全普通行对比度过低（${DN:-?}）"; fi
     echo "$J" | grep -q "\"searchPanelLocalized=true\"" && ok "查找面板已中文化（查找/替换/下一个/区分大小写…）" || bad "查找面板未中文化（$(echo "$J" | grep -o "\"searchPanelLocalized=[^,]*\"" | head -1)）"
     echo "$J" | grep -q "\"searchPanelTwoRows=true\"" && ok "查找面板两行紧凑布局" || bad "查找面板不是两行布局"
+    echo "$J" | grep -q "\"searchInputsStacked=true\"" && ok "查找/替换输入框上下排列（非同一行）" || bad "查找/替换输入框仍在同一行"
     SW="$(echo "$J" | grep -o "\"searchPanelInputWidth=[0-9]*\"" | head -1 | cut -d= -f2 | tr -d "\"")"
     if [ -n "$SW" ] && [ "$SW" -ge 140 ]; then ok "查找输入框自适应宽度（${SW}px）"; else bad "查找输入框过窄（${SW:-?}px）"; fi
     SH="$(echo "$J" | grep -o '"scrollH=[0-9]*"' | head -1 | cut -d= -f2 | tr -d '"')"

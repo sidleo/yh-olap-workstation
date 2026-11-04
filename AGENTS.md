@@ -120,9 +120,12 @@ cd .. && node --test test/unit/*.test.mjs
   - **查找/替换面板（CM search）**：CM 默认只出英文（`Next/Previous/Match case…`），必须用
     `EditorState.phrases.of(ZH_PHRASES)` 中文化（phrase key 直接取自 @codemirror/search 源码里
     的 `phrase(...)`，改文案改 `editor.js` 顶部 `ZH_PHRASES`）；布局与配色在
-    `styles.css` 的 `.yh-olap-panel .yh-olap-cm-host .cm-panel.cm-search`：用 flex + `order`
-    重排成两行（查找行 / 替换行），前缀多一层 `.yh-olap-panel` 提高特异性压过 CM 的 baseTheme
-    （CM 的样式在编辑器创建时注入，晚于本插件 styles.css）。verify.sh 有中文化/两行/输入框宽度断言。
+    `styles.css` 的 `.yh-olap-panel .yh-olap-cm-host .cm-panel.cm-search`：**用 CSS grid 明确
+    两行**（第 1 行查找输入 + 上一个/下一个/全部选中，第 2 行替换输入 + 替换/全部替换 + 选项）。
+    不要用 flex + `<br>` 换行——不同 Chromium 版本对 flex 里的 br 行为不一致，会变成同一行；
+    窄面板（@container ≤620）时选项移到第 3 行避免溢出。前缀多一层 `.yh-olap-panel` 提高特异性
+    压过 CM 的 baseTheme（CM 样式在编辑器创建时注入，晚于本插件 styles.css）。
+    verify.sh 有中文化/两行/输入框上下排列/宽度断言。
   - **Tab / Shift-Tab 策略**（`Prec.highest` 自定义 keymap，verify.sh 有 5 条浏览器断言）：
     ① 补全弹层打开 → Tab 接受当前项并插入（函数自动 `name()`）；
     ② 有选区 → Tab / Shift-Tab 对选中行整行缩进 / 反缩进（`indentMore`/`indentLess`，
