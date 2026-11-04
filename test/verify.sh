@@ -219,6 +219,7 @@ log('panel', panel)
 log('cm', await page.evaluate(() => !!document.querySelector('.cm-editor')))
 log('tabChip', JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('[data-dockkit-tab]')].map(e => e.textContent.trim()))))
 // 库表/收藏左树：默认隐藏，工具栏按钮可显式展开/再收起
+log('cmStatusBarAbsent', await page.evaluate(() => !document.querySelector('.yh-olap-cm-status')))
 log('treeHiddenDefault', await page.evaluate(() => !document.querySelector('.yh-olap-left')))
 await page.evaluate(() => { const b = document.querySelector('.yh-olap-tree-toggle'); if (b) b.click() })
 await page.waitForTimeout(400)
@@ -422,6 +423,7 @@ EOF
     echo "$J" | grep -q '"guideHasOlap=true"' && ok "右侧栏引导页有 OLAP 工具卡" || bad "引导页缺少 OLAP 工具卡（$(head -c 300 "$BROWSER_OUT")）"
     echo "$J" | grep -q '"panel=true"' && ok "点击后 OLAP tab 正文挂载" || bad "OLAP tab 正文未挂载"
     echo "$J" | grep -q '"cm=true"' && ok "CodeMirror 编辑器挂载" || bad "CodeMirror 编辑器未挂载"
+    echo "$J" | grep -q '"cmStatusBarAbsent=true"' && ok "编辑器下方光标位置状态条已移除" || bad "编辑器下方仍有行/列状态条"
     echo "$J" | grep -q '"treeHiddenDefault=true"' && ok "库表/收藏默认隐藏" || bad "库表/收藏默认未隐藏"
     echo "$J" | grep -q '"treeShownAfterToggle=true"' && ok "工具栏按钮可展开库表/收藏" || bad "工具栏按钮无法展开库表/收藏"
     echo "$J" | grep -q '"treeHiddenAgain=true"' && ok "再次点击可收起库表/收藏" || bad "无法再次收起库表/收藏"

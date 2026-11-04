@@ -279,7 +279,6 @@ function cacheKey(sid, tabId) { return String(sid) + '|' + String(tabId) }
 // ---------- React 组件 ----------
 export function SqlEditor(props) {
   const hostRef = useRef(null)
-  const statusRef = useRef(null)
   const tipHostRef = useRef(null)
   const viewRef = useRef(null)
   const propsRef = useRef(props)
@@ -426,7 +425,6 @@ export function SqlEditor(props) {
       EditorView.lineWrapping,
       EditorView.updateListener.of(function (u) {
         if (u.docChanged) onDocChanged(u.view)
-        if (u.selectionSet || u.docChanged) updateStatus(u.view, statusRef.current)
       }),
     ]
   }
@@ -461,7 +459,6 @@ export function SqlEditor(props) {
     viewRef.current = view
     prevRef.current = { sid: p.sid, tabId: t0 ? t0.id : 0 }
     if (cached) { try { view.scrollDOM.scrollTop = cached.top || 0; view.scrollDOM.scrollLeft = cached.left || 0 } catch (e) {} }
-    updateStatus(view, statusRef.current)
     if (p.onApi) p.onApi({
       openSearch: function () { openSearchPanel(view) },
       format: function () { formatKeyRun(view) },
@@ -499,7 +496,6 @@ export function SqlEditor(props) {
       view.setState(EditorState.create({ doc: sql, extensions: buildExtensions(engine, props.dark, tipHostRef.current) }))
     }
     try { view.focus() } catch (e) {}
-    updateStatus(view, statusRef.current)
   }, [props.sid, tabId])
 
   // 外部写入（模型 / 历史 / 收藏）同步进 doc
@@ -532,8 +528,7 @@ export function SqlEditor(props) {
   }, [props.dark])
 
   return h('div', { className: 'yh-olap-cm-wrap' },
-    h('div', { className: 'yh-olap-cm-host', ref: hostRef }),
-    h('div', { className: 'yh-olap-cm-status', ref: statusRef }, '行 1, 列 1'))
+    h('div', { className: 'yh-olap-cm-host', ref: hostRef }))
 }
 
 function formatKeyRun(view) {
@@ -543,11 +538,3 @@ function formatKeyRun(view) {
   view.dispatch({ changes: { from: 0, to: src.length, insert: out } })
 }
 
-function updateStatus(view, el) {
-  if (!el) return
-  const sel = view.state.selection.main
-  const line = view.state.doc.lineAt(sel.head)
-  const col = sel.head - line.from + 1
-  const selN = sel.empty ? 0 : Math.abs(sel.to - sel.from)
-  el.textContent = '行 ' + line.number + ', 列 ' + col + (selN ? ' · 选中 ' + selN + ' 字符' : '') + ' · ' + view.state.doc.lines + ' 行'
-}
