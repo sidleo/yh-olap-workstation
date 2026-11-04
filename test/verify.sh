@@ -379,6 +379,21 @@ log('searchInputsStacked', !!sp.stacked)
 log('searchPanelInputWidth', sp.searchWidth)
 await page.keyboard.press('Escape')
 await page.waitForTimeout(300)
+// 下载工单详情弹窗：宽度/可滚动布局（no real download data in isolated instance, 直接量 CSS）
+const dlModal = await page.evaluate(() => {
+  const mask = document.createElement('div'); mask.className = 'yh-olap-mask'
+  const m = document.createElement('div'); m.className = 'yh-olap-modal yh-olap-dlmodal'
+  m.innerHTML = '<h4>t</h4><div class="yh-olap-dlbody"><div class="yh-olap-dlmeta">x</div><div class="yh-olap-dlsql">select 1</div><div class="yh-olap-dlerr">e</div></div><div class="row yh-olap-dlfoot"><button class="pri">关闭</button></div>'
+  mask.appendChild(m); document.body.appendChild(mask)
+  const r = m.getBoundingClientRect()
+  const body = m.querySelector('.yh-olap-dlbody')
+  const cs = getComputedStyle(body)
+  const out = { w: Math.round(r.width), flexCol: getComputedStyle(m).display === 'flex', bodyScroll: cs.overflowY }
+  mask.remove()
+  return out
+})
+log('dlModalWidth', dlModal.w)
+log('dlModalLayout', dlModal.flexCol && dlModal.bodyScroll === 'auto')
 // 回归：OLAP 打开不得让 DSH 页面出现滚动（历史 bug：CM tooltip 容器被主题 height:100% 撑出视口）
 log('scrollH', await page.evaluate(() => document.documentElement.scrollHeight))
 log('innerH', await page.evaluate(() => window.innerHeight))
@@ -434,6 +449,9 @@ EOF
     echo "$J" | grep -q "\"searchInputsStacked=true\"" && ok "查找/替换输入框上下排列（非同一行）" || bad "查找/替换输入框仍在同一行"
     SW="$(echo "$J" | grep -o "\"searchPanelInputWidth=[0-9]*\"" | head -1 | cut -d= -f2 | tr -d "\"")"
     if [ -n "$SW" ] && [ "$SW" -ge 140 ]; then ok "查找输入框自适应宽度（${SW}px）"; else bad "查找输入框过窄（${SW:-?}px）"; fi
+    DW="$(echo "$J" | grep -o '"dlModalWidth=[0-9]*"' | head -1 | cut -d= -f2 | tr -d '"')"
+    echo "$J" | grep -q '"dlModalLayout=true"' && ok "下载详情弹窗大尺寸 + 内容区可滚动" || bad "下载详情弹窗布局异常"
+    if [ -n "$DW" ] && [ "$DW" -ge 800 ]; then ok "下载详情弹窗宽度 ${DW}px（≥800）"; else bad "下载详情弹窗过窄（${DW:-?}px）"; fi
     SH="$(echo "$J" | grep -o '"scrollH=[0-9]*"' | head -1 | cut -d= -f2 | tr -d '"')"
     IH="$(echo "$J" | grep -o '"innerH=[0-9]*"' | head -1 | cut -d= -f2 | tr -d '"')"
     ST="$(echo "$J" | grep -o '"scrollTopAfter=[0-9-]*"' | head -1 | cut -d= -f2 | tr -d '"')"

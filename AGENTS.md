@@ -147,6 +147,10 @@ cd .. && node --test test/unit/*.test.mjs
   （两位补零、24 小时制；后端会返回 `2026-11-04 17:26` 与 `11/4/26 5:02 PM` 两种格式，
   已在函数内归一，禁止在各视图里各写一套）。单测：`test/unit/timefmt.test.mjs`。
 - **弹窗/菜单**：面板层统一 `createPortal(..., document.body)`，避免右侧栏裁剪/层叠。
+  **尺寸修饰类必须写成 `.yh-olap-modal.yh-olap-xxx`（双类名）或放在基础 `.yh-olap-modal` 之后**
+  ——基础规则 `width:340px` 在样式表靠后，单类名的尺寸修饰会被它覆盖（下载详情弹窗曾因此
+  只有 340px 宽）。下载详情弹窗 `.yh-olap-dlmodal`：960px 宽、88vh 高、`dlbody` 内容区滚动、
+  footer 固定。verify.sh 有合成 DOM 的宽度/滚动断言。
 
 ## 安装 / 卸载
 
