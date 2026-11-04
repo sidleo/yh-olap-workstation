@@ -218,6 +218,43 @@ if (!panel) {
 log('panel', panel)
 log('cm', await page.evaluate(() => !!document.querySelector('.cm-editor')))
 log('tabChip', JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('[data-dockkit-tab]')].map(e => e.textContent.trim()))))
+// 库表/收藏左树：默认隐藏，工具栏按钮可显式展开/再收起
+log('treeHiddenDefault', await page.evaluate(() => !document.querySelector('.yh-olap-left')))
+await page.evaluate(() => { const b = document.querySelector('.yh-olap-tree-toggle'); if (b) b.click() })
+await page.waitForTimeout(400)
+log('treeShownAfterToggle', await page.evaluate(() => !!document.querySelector('.yh-olap-left')))
+await page.evaluate(() => { const b = document.querySelector('.yh-olap-tree-toggle'); if (b) b.click() })
+await page.waitForTimeout(400)
+log('treeHiddenAgain', await page.evaluate(() => !document.querySelector('.yh-olap-left')))
+// hive 引擎下 Session 参数按钮应可用（不应要求先写 SQL）
+const hiveSwitched = await page.evaluate(() => {
+  const sel = document.querySelector('.yh-olap-fsel')
+  if (!sel) return false
+  const opt = [...sel.options].find(o => /hive/i.test(o.text))
+  if (!opt) return false
+  sel.value = opt.value
+  sel.dispatchEvent(new Event('change', { bubbles: true }))
+  return true
+})
+await page.waitForTimeout(900)
+log('hiveSwitched', hiveSwitched)
+log('sessionHiveEnabled', await page.evaluate(() => {
+  const b = [...document.querySelectorAll('.yh-olap-fbtn')].find(x => /Session/.test(x.textContent))
+  return !!b && b.disabled === false
+}))
+await page.evaluate(() => { const b = [...document.querySelectorAll('.yh-olap-fbtn')].find(x => /Session/.test(x.textContent)); if (b) b.click() })
+await page.waitForTimeout(500)
+log('sessionModalOpen', await page.evaluate(() => !!document.querySelector('.yh-olap-smodal')))
+await page.evaluate(() => { const m = document.querySelector('.yh-olap-mask'); if (m) m.click() })
+await page.waitForTimeout(300)
+// 切回 impala（后续补全用例用 impala 的 ndv）
+await page.evaluate(() => {
+  const sel = document.querySelector('.yh-olap-fsel')
+  if (!sel) return
+  const opt = [...sel.options].find(o => /impala/i.test(o.text))
+  if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change', { bubbles: true })) }
+})
+await page.waitForTimeout(900)
 const rect = await page.evaluate(() => { const el = document.querySelector('.cm-content'); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + 30, y: r.top + 20 } })
 if (rect) {
   await page.mouse.click(rect.x, rect.y, { label: 'focus editor' })
@@ -366,6 +403,11 @@ EOF
     echo "$J" | grep -q '"guideHasOlap=true"' && ok "右侧栏引导页有 OLAP 工具卡" || bad "引导页缺少 OLAP 工具卡（$(head -c 300 "$BROWSER_OUT")）"
     echo "$J" | grep -q '"panel=true"' && ok "点击后 OLAP tab 正文挂载" || bad "OLAP tab 正文未挂载"
     echo "$J" | grep -q '"cm=true"' && ok "CodeMirror 编辑器挂载" || bad "CodeMirror 编辑器未挂载"
+    echo "$J" | grep -q '"treeHiddenDefault=true"' && ok "库表/收藏默认隐藏" || bad "库表/收藏默认未隐藏"
+    echo "$J" | grep -q '"treeShownAfterToggle=true"' && ok "工具栏按钮可展开库表/收藏" || bad "工具栏按钮无法展开库表/收藏"
+    echo "$J" | grep -q '"treeHiddenAgain=true"' && ok "再次点击可收起库表/收藏" || bad "无法再次收起库表/收藏"
+    echo "$J" | grep -q '"sessionHiveEnabled=true"' && ok "hive 引擎下 Session 参数可用（无需先写 SQL）" || bad "hive 引擎下 Session 参数仍不可用"
+    echo "$J" | grep -q '"sessionModalOpen=true"' && ok "Session 参数弹窗可打开" || bad "Session 参数弹窗打不开"
     echo "$J" | grep -q 'ndv' && ok "impala 补全包含函数 ndv" || bad "impala 补全缺少 ndv（$(echo "$J" | grep -o '"completion=[^,]*' | head -1)）"
     DCNT="$(echo "$J" | grep -o '"completionDetailCount=[0-9]*"' | head -1 | cut -d= -f2 | tr -d '"')"
     DSPREAD="$(echo "$J" | grep -o '"completionDetailSpread=[0-9-]*"' | head -1 | cut -d= -f2 | tr -d '"')"

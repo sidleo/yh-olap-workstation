@@ -160,7 +160,7 @@ function Toolbar(props) {
   })
   const api = function () { return apiRef.current || {} }
   return h('div', { className: 'yh-olap-func' },
-    h('button', { className: 'yh-olap-tree-toggle' + (st.leftCollapsed ? '' : ' on'), title: st.leftCollapsed ? '显示库表/收藏' : '隐藏库表/收藏', onClick: function () { st.leftCollapsed = !st.leftCollapsed; st.leftAuto = true; bump() } }, h(IconTable, null)),
+    h('button', { className: 'yh-olap-tree-toggle' + (st.leftCollapsed ? '' : ' on'), title: st.leftCollapsed ? '显示库表/收藏' : '隐藏库表/收藏', onClick: function () { st.leftCollapsed = !st.leftCollapsed; bump() } }, h(IconTable, null)),
     h('select', {
       className: 'yh-olap-fsel',
       title: '数据源 / 引擎',
@@ -182,7 +182,7 @@ function Toolbar(props) {
     h('span', { className: 'yh-olap-fgap' }),
     h(ToolButton, { icon: IconParam, label: '参数', title: '设置 SQL 的 ${} 参数', onClick: function () { st.paramModalFor = true; bump() } }),
     h(ToolButton, {
-      icon: IconSession, label: 'Session', title: 'Session 参数（hive 虚拟参数；仅 hive + 有 SQL 时可用）',
+      icon: IconSession, label: 'Session', title: 'Session 参数（hive 虚拟参数；切到 hive 引擎后可用）',
       disabled: !sessionEnabledFor(tab),
       onClick: function () {
         if (!sessionEnabledFor(tab)) return
@@ -363,26 +363,6 @@ export function OlapPanel(props) {
     try { mo = new MutationObserver(read); mo.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme'] }) } catch (e) {}
     return function () { if (mo) mo.disconnect() }
   }, [])
-
-  // 窄面板默认收起左树（只在首次测量时决策，之后尊重用户手动切换）
-  useEffect(function () {
-    const el = rootRef.current
-    if (!el || st.leftAuto) return
-    let ro = null
-    const measure = function (w) {
-      st.leftAuto = true
-      if (w < 720) { st.leftCollapsed = true; bump() }
-      else { st.leftCollapsed = false; bump() }
-    }
-    try {
-      ro = new ResizeObserver(function (entries) {
-        const w = entries[0] && entries[0].contentRect ? entries[0].contentRect.width : 0
-        if (w > 0) { if (ro) ro.disconnect(); measure(w) }
-      })
-      ro.observe(el)
-    } catch (e) { st.leftAuto = true }
-    return function () { if (ro) { try { ro.disconnect() } catch (e) {} } }
-  }, [sid])
 
   // 会话初始化：恢复工作区 → 上传状态 → 拉数据源/收藏/账号 → 轮询命令
   useEffect(function () {

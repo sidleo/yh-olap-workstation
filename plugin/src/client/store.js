@@ -13,7 +13,7 @@ import { callHost } from './rpc.js'
         collectTree: [], collectDirs: [], collectExpanded: {}, collectMenu: null,
         // ===== WORKSTATION: 库表清单右键菜单（复制库名/表名/字段名）=====
         schemaMenu: null,
-        leftTab: 'schema', leftCollapsed: false, leftWidth: 210, editorRatio: 0.62, bottomTab: 'result',
+        leftTab: 'schema', leftCollapsed: true, leftWidth: 210, editorRatio: 0.62, bottomTab: 'result',
         __wsKnownFiles: new Set(),
         historyRows: [], historyLoaded: false,
         downloadRows: [], downloadLoaded: false, dlSearch: '', dlSqlCache: {},
@@ -73,8 +73,10 @@ import { callHost } from './rpc.js'
       })
       return n ? out : null
     }
+    // Session 参数（hive 虚拟参数）只要求引擎是 hive；不再要求已经写了 SQL ——
+    // 用户经常先切 hive 配会话参数再写 SQL，之前的「必须有 SQL」门槛会让按钮一直灰。
     function sessionEnabledFor(tab) {
-      return !!tab && String(tab.engine) === '1' && !!(tab.sql || '').trim()
+      return !!tab && String(tab.engine) === '1'
     }
 
 

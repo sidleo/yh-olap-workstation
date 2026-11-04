@@ -85,6 +85,9 @@ cd .. && node --test test/unit/*.test.mjs
 - **面板在线判定**：client 每 1.5s `olap.panel.state` 心跳；host `lastState` 只认 6s 内更新；
   关闭右侧栏 tab 时 client 调 `olap.panel.offline` 清理状态与命令队列。模型 `write` 在离线时
   明确报错（不要再假 queued）。
+- **Session 参数**：工具栏「Session」按钮只要求当前标签引擎是 hive（`sessionEnabledFor`），
+  **不要求已写 SQL**（先切 hive 配会话参数再写 SQL 是常见流程）；只有勾选行随执行作为
+  `executeConfigs` 下发，并随 `__sessionConfigs` 持久化。
 - **模型工具/模式**：`olap` 工具（write/run/stop/state/refresh）与 `/olap` 命令、
   `systemPrompt` section 保留；`/olap` 模式 chip 在 `conversation.input.left`。preset/skill
   已删除，工程约定写进 `OLAP_MODE_GUIDE` 与工具 description。
@@ -135,8 +138,9 @@ cd .. && node --test test/unit/*.test.mjs
     否则会盖掉这套策略；
   - tab.sql 是唯一事实源：docChanged → 立即写 tab.sql、800ms 自动落盘；外部写入由 props
     `sql` 变化触发一次 dispatch 同步。
-- **面板/样式**：容器查询 `container-type:inline-size`；<720px 默认收起左树（首次测量决策，
-  之后尊重用户手动切换）；<620px 左树变抽屉。所有颜色走 `--dsw-alias-*` / 面板内 `--yh-*`，
+- **面板/样式**：容器查询 `container-type:inline-size`；**库表/收藏左树默认隐藏**
+  （store 默认 `leftCollapsed:true`），由工具栏最左侧的树按钮显式展开/收起，**不按宽度自动展开**；
+  <620px 时左树为抽屉覆盖。所有颜色走 `--dsw-alias-*` / 面板内 `--yh-*`，
   不写死浅/深色（`data-yh-theme` 在面板根）。
 - **弹窗/菜单**：面板层统一 `createPortal(..., document.body)`，避免右侧栏裁剪/层叠。
 
