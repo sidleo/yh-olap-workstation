@@ -1,0 +1,922 @@
+// yh-olap 独立工作站插件 Host 半（plain ESM，Node 端，独立实现）。
+// 职责：网络/认证/OLAP API 代理 + `olap` 模型工具 + 反向命令队列 +
+//       本地工作区多文件持久化（sql/params）。
+// 客户端 RPC 统一 POST /api/yh-olap/rpc 分发到 handles/queues/wsHandlers 表。
+// 文件读写用 node:fs；模型工具经 ctx.tools.register(tool)。
+
+import { spawn } from 'node:child_process'
+import { readFile, writeFile, mkdir, readdir, rm, stat } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
+import { homedir } from 'node:os'
+
+// ===== WORKSTATION: 独立工作站插件 =====
+// 本地工作区多文件持久化（sql/params）。
+export const name = 'yh-olap-workstation'
+export const inject = ['webServer', 'tools']
+
+const HOME = homedir()
+const ACCOUNTS_PATH = HOME + '/.config/yh_bigdata/accounts.json'
+const SESSION_PATH = HOME + '/.config/yh_bigdata/session.json'
+const CONFIG_PATH = HOME + '/.config/yh_bigdata/config.json'
+const BASE_OLAP = 'https://prokongbigdata.yonghui.cn/yh-olap-web'
+const MAGPIE_BASE = 'https://prokongbigdata.yonghui.cn/yh-magpie-bridge-manager'
+const TTL_MS = 6 * 3600 * 1000
+
+// ===== WORKSTATION: 工作区常量 =====
+// 默认 ~/.yh-olap/workspace；测试可用 YH_OLAP_WORKSPACE_ROOT 注入隔离目录（文件格式不变）。
+const WORKSPACE_ROOT = process.env.YH_OLAP_WORKSPACE_ROOT || join(HOME, '.yh-olap', 'workspace')
+
+let jsidCache = ''
+let orgCache = ''
+let accountCache = ''
+let accountsCache = null
+const panelQueues = new Map()
+const panelStates = new Map()
+let cmdSeq = 0
+let paramIdSeq = 0
+
+async function readJson(path, fallback) {
+  try {
+    const txt = await readFile(path, 'utf8')
+    return JSON.parse(txt)
+  } catch (e) { return fallback }
+}
+async function writeJson(path, obj) {
+  await mkdir(dirname(path), { recursive: true })
+  await writeFile(path, JSON.stringify(obj, null, 2), 'utf8')
+}
+
+async function loginAccount(acc) {
+  const code = [
+    "from yhlogin import Yhlogin",
+    "from yhlogin.service import Olap",
+    "import sys,json",
+    "r=Yhlogin().login(sys.argv[1],sys.argv[2],sys.argv[3],Olap)",
+    "print(json.dumps({'js':r.get('jsessionid') or ''}))",
+  ].join(';')
+  const out = await new Promise((resolve) => {
+    const child = spawn('python3', ['-c', code, acc.username, acc.password, acc.otp_key || ''])
+    let so = ''
+    child.stdout.on('data', (c) => { so += c.toString('utf8') })
+    child.on('error', () => resolve(''))
+    child.on('close', () => resolve(so.trim()))
+  })
+  try { return JSON.parse(out).js || '' } catch (e) { return '' }
+}
+
+
+async function loadAccounts() {
+  let acc = await readJson(ACCOUNTS_PATH, null)
+  if (!acc || !Array.isArray(acc.accounts)) {
+    const legacy = await readJson(HOME + '/.config/yhlogin/accounts.json', null)
+    if (legacy && Array.isArray(legacy.accounts)) {
+      acc = { current: legacy.current || '', accounts: legacy.accounts }
+    } else {
+      acc = { current: '', accounts: [] }
+    }
+  }
+  accountsCache = acc
+  return acc
+}
+function getAccount(username) {
+  if (!accountsCache) return undefined
+  if (username) return accountsCache.accounts.find((a) => a.username === username)
+  const cur = accountsCache.current
+  return accountsCache.accounts.find((a) => a.username === cur) || accountsCache.accounts[0]
+}
+async function saveAccounts(acc) {
+  await writeJson(ACCOUNTS_PATH, acc)
+  accountsCache = acc
+}
+
+async function doLogin(username) {
+  await loadAccounts()
+  const acc = getAccount(username)
+  if (!acc) return { ok: false, error: 'no account; configure one first' }
+  const js = await loginAccount(acc)
+  if (!js) return { ok: false, error: 'login failed for ' + acc.username }
+  jsidCache = js
+  const cfg = await readJson(CONFIG_PATH, null)
+  orgCache = (acc && acc.org) || (cfg && cfg.default_org) || ''
+  accountCache = acc.username
+  await writeJson(SESSION_PATH, { jsessionid: js, username: acc.username, org: orgCache, login_time: Date.now() / 1000 })
+  return { ok: true, cached: false, jsid: js, org: orgCache, username: acc.username }
+}
+
+async function ensureAuth(preferAccount) {
+  if (jsidCache && !preferAccount) return { ok: true, cached: true, jsid: jsidCache, org: orgCache, username: accountCache }
+  const sess = await readJson(SESSION_PATH, null)
+  if (!preferAccount && sess && sess.jsessionid && sess.login_time && (Date.now() / 1000 - sess.login_time) * 1000 < TTL_MS) {
+    jsidCache = sess.jsessionid
+    const cfg = await readJson(CONFIG_PATH, null)
+    orgCache = (sess && sess.org) || (cfg && cfg.default_org) || ''
+    accountCache = (sess && sess.username) || ''
+    return { ok: true, cached: true, jsid: jsidCache, org: orgCache, username: accountCache }
+  }
+  return doLogin(preferAccount)
+}
+
+// normalize params to runSql's real format: a JSON string of
+// [{id:number, key, type:1, value:string}]. The server parseInt()s `id`.
+function normParams(p) {
+  let arr = []
+  if (Array.isArray(p)) arr = p.slice()
+  else if (p && typeof p === 'object') arr = Object.keys(p).map((k) => ({ key: k, value: p[k] }))
+  arr = arr.map((it, i) => ({
+    id: (typeof it.id === 'number' && isFinite(it.id) && it.id >= 0 && it.id <= 2147483647) ? Math.floor(it.id) : (++paramIdSeq),
+    key: String(it.key === undefined ? 'p' + i : it.key),
+    type: (typeof it.type === 'number' ? it.type : 1),
+    value: (it.value === undefined || it.value === null) ? '' : String(it.value),
+  }))
+  return arr
+}
+// ===== WORKSTATION: Session 参数（hive 虚拟参数）=====
+// 原版 olap（olap-web）的「Session 参数」弹窗：每行 {key,value} 带勾选，**只有勾选行生效**；
+// 提交 runSql 时聚合为对象 {key: value} 放进 executeConfigs 字段（原版无勾选行时该字段不带）。
+// 这里同时接受数组形态（[{key,value,selected}]，面板直传）与对象形态（模型直传 {key:value}）。
+function normExecuteConfigs(ec) {
+  if (!ec) return null
+  const out = {}
+  let n = 0
+  if (Array.isArray(ec)) {
+    ec.forEach(function (it) {
+      if (!it || !it.selected) return
+      const k = (it.key === undefined || it.key === null) ? '' : String(it.key)
+      if (!k) return
+      out[k] = (it.value === undefined || it.value === null) ? '' : String(it.value)
+      n++
+    })
+  } else if (typeof ec === 'object') {
+    Object.keys(ec).forEach(function (k) {
+      if (!k) return
+      out[k] = (ec[k] === undefined || ec[k] === null) ? '' : String(ec[k])
+      n++
+    })
+  }
+  return n ? out : null
+}
+
+// 面板标签上的 Session 参数摘要（olap state 用）：只显示勾选行
+function sessNote(t) {
+  const m = normExecuteConfigs(t && t.sessionConfigs)
+  if (!m) return ''
+  return ' session=' + JSON.stringify(m)
+}
+
+function runSqlBody(payload) {
+  return {
+    sql: payload.sql,
+    engine: payload.engine,
+    dsId: payload.dsId,
+    params: normParams(payload.params),
+    // 无勾选项时沿用旧的空对象（服务端一直接受），有勾选才带真实 map
+    executeConfigs: normExecuteConfigs(payload.executeConfigs) || {},
+  }
+}
+
+// ---- curl 执行 ----
+function curlRun(argv, bodyStdin, timeoutSec) {
+  return new Promise((resolve) => {
+    const child = spawn('curl', argv)
+    let out = Buffer.alloc(0)
+    let err = ''
+    let settled = false
+    const done = (res) => { if (!settled) { settled = true; resolve(res) } }
+    const killTimer = setTimeout(() => { try { child.kill('SIGKILL') } catch {} done({ exitCode: -1, out, err: 'timeout' }) }, (timeoutSec + 10) * 1000)
+    child.stdout.on('data', (c) => { out = Buffer.concat([out, c]) })
+    child.stderr.on('data', (c) => { err += c.toString('utf8') })
+    child.on('error', (e) => { clearTimeout(killTimer); done({ exitCode: -1, out, err: String(e && e.message) }) })
+    child.on('close', (code) => { clearTimeout(killTimer); done({ exitCode: code === null ? -1 : code, out, err }) })
+    child.stdin.on('error', () => {})
+    if (bodyStdin !== undefined) child.stdin.write(bodyStdin)
+    child.stdin.end()
+  })
+}
+
+// ---- OLAP HTTP 请求 ----
+async function req(spec) {
+  if (spec.auth !== false) await ensureAuth()
+  const base = spec.base || BASE_OLAP
+  let url = base + spec.path
+  if (spec.query) url += '?' + spec.query
+  const argv = ['-sk', '--max-time', String(spec.timeout || 180)]
+  if (spec.method && spec.method !== 'GET') argv.push('-X', spec.method)
+  if (spec.auth !== false) {
+    argv.push('-H', 'token: JSESSIONID=' + jsidCache)
+    argv.push('-H', 'orgCode: ' + (orgCache || 'bgzt000004'))
+  }
+  argv.push('-H', 'Content-Type: application/json')
+  if (spec.body !== undefined && spec.body !== null) argv.push('--data-binary', '@-')
+  if (spec.binary) argv.push('-D', '-')
+  argv.push(url)
+  const stdinData = (spec.body !== undefined && spec.body !== null) ? JSON.stringify(spec.body) : undefined
+  const r = await curlRun(argv, stdinData, spec.timeout || 180)
+  if (r.exitCode !== 0) {
+    return { ok: false, httpError: 'exit ' + r.exitCode + (r.err ? ' : ' + r.err.slice(0, 500) : '') }
+  }
+  let payload = r.out
+  if (spec.binary) {
+    let cut = 0
+    const sepCrlf = r.out.indexOf('\r\n\r\n')
+    if (sepCrlf >= 0) cut = sepCrlf + 4
+    else {
+      const sepLf = r.out.indexOf('\n\n')
+      if (sepLf >= 0) cut = sepLf + 2
+    }
+    const headText = r.out.slice(0, cut).toString('utf8')
+    payload = r.out.slice(cut)
+    // 下载接口在「文件未生成/生成失败」时返回 JSON（如 {"code":"001","message":"文件生成状态未正确完成。[3]"}），
+    // 且不带 Content-Disposition——不能当文件存下来（否则会落一个 .xlsx 后缀的 JSON 报错）。
+    const ctype = /content-type:\s*([^\r\n]+)/i.exec(headText)
+    if (ctype && /json/i.test(ctype[1])) {
+      try {
+        const j = JSON.parse(payload.toString('utf8'))
+        return { ok: false, error: j.message || j.msg || ('download failed: ' + (j.code || 'unknown')) }
+      } catch (e) { /* 非 JSON 正文，按二进制继续 */ }
+    }
+    const cd = /content-disposition:\s*[^;\r\n]*;\s*filename\*?=(?:"([^"]*)"|([^;\r\n]+))/i.exec(headText)
+      || /filename=(?:"([^"]*)"|([^;\r\n]+))/i.exec(headText)
+    let fn = ''
+    if (cd) {
+      fn = (cd[1] !== undefined ? cd[1] : cd[2]).trim()
+      try { fn = decodeURIComponent(fn.replace(/^UTF-8''/i, '')) } catch {}
+    }
+    return { ok: true, base64: payload.toString('base64'), filename: fn }
+  }
+  const text = payload.toString('utf8')
+  try {
+    const j = JSON.parse(text)
+    if (j && typeof j === 'object') {
+      if (j.data !== undefined) {
+        if (j.code !== undefined && j.code !== '0000000') {
+          return { ok: false, error: j.message || ('code ' + j.code), body: j }
+        }
+        return { ok: true, data: j.data, raw: text }
+      }
+      return { ok: false, error: j.message || 'empty response', body: j }
+    }
+    return { ok: true, data: j, raw: text }
+  } catch (e) {
+    return { ok: false, error: 'bad json: ' + text.slice(0, 300) }
+  }
+}
+
+async function delay(ms) { await new Promise((r) => setTimeout(r, ms)) }
+
+async function runSqlFull(payload, timeoutSec) {
+  const sec = timeoutSec || 300
+  const sub = await req({ path: '/sql/manager/runSql', method: 'POST', body: runSqlBody(payload), timeout: 60 })
+  if (!sub.ok) return sub
+  const executeId = sub.data && sub.data.executeId
+  if (!executeId) return { ok: false, error: 'no executeId in runSql response' }
+  const deadline = Date.now() + sec * 1000
+  let state = { finish: 'run' }
+  let logText = ''
+  let lastErr = ''
+  while (Date.now() < deadline) {
+    const st = await req({ path: '/sql/manager/checkState', method: 'POST', body: { requestId: executeId }, timeout: 30 })
+    if (!st.ok) { lastErr = st.error || 'checkState failed'; break }
+    const d = st.data || {}
+    state = d
+    const lg = await req({ path: '/sql/manager/getLogResult', method: 'POST', body: { requestId: executeId }, timeout: 30 })
+    if (lg.ok && lg.data) logText = (lg.data.data !== undefined ? lg.data.data : '') || ''
+    if (d.finish === 'ok' || d.finish === 'error') break
+    await delay(1500)
+  }
+  let result = null
+  if (state.finish === 'ok') {
+    // getSqlResult 在 finish=ok 后可能 isReady 仍是 'run'，结果未就绪返回空；轮询直到 ready 或超时
+    const rDeadline = Date.now() + 12000
+    while (Date.now() < rDeadline) {
+      const r = await req({ path: '/sql/manager/getSqlResult', method: 'POST', body: { requestId: executeId, pageNo: 1, pageSize: 200 }, timeout: 60 })
+      if (r.ok && r.data && (r.data.isReady === 'ok' || (r.data.list && r.data.list.length))) { result = r.data; break }
+      if (!r.ok) { lastErr = r.error || 'getSqlResult failed'; break }
+      await delay(1500)
+    }
+  }
+  return { ok: true, executeId, finish: state.finish, errMsg: state.errMsg || lastErr, log: logText, result }
+}
+
+// ===== WORKSTATION: 下载文件命名 =====
+// 统一为 `olap-<引擎名>-<id><服务端后缀>`；后缀取服务端 Content-Disposition 里的文件名，
+// 不硬编码扩展名（服务端给什么就用什么）。引擎名与面板展示一致：hive/impala/ck/doris。
+const ENGINE_LABEL = { 1: 'hive', 2: 'impala', 3: 'ck', 4: 'doris' }
+function downloadName(engine, id, serverName) {
+  const ext = (/(\.[A-Za-z0-9]+)\s*$/.exec(String(serverName || '')) || [])[1] || ''
+  return 'olap-' + (ENGINE_LABEL[Number(engine)] || ('engine' + engine)) + '-' + id + ext
+}
+
+const handles = {
+  'olap.accounts.list': async () => {
+    const acc = await loadAccounts()
+    return { ok: true, current: acc.current, accounts: acc.accounts.map((a) => ({ username: a.username, alias: a.alias || a.username, org: a.org || '' })) }
+  },
+  'olap.accounts.save': async (args) => {
+    const acc = await loadAccounts()
+    const i = acc.accounts.findIndex((a) => a.username === args.username)
+    // 已存在账号：未提供的字段（尤其 password/otp_key）必须保留旧值，
+    // 否则保存昵称/org 会把密码清空导致切换失败。
+    const prev = i >= 0 ? acc.accounts[i] : {}
+    const entry = {
+      username: args.username,
+      password: (args.password !== undefined && args.password !== null) ? args.password : (prev.password || ''),
+      otp_key: (args.otp_key !== undefined && args.otp_key !== null) ? args.otp_key : (prev.otp_key || ''),
+      org: (args.org !== undefined && args.org !== null) ? args.org : (prev.org || ''),
+      alias: (args.alias !== undefined && args.alias !== null) ? args.alias : (prev.alias || args.username),
+    }
+    if (i >= 0) acc.accounts[i] = entry
+    else acc.accounts.push(entry)
+    acc.current = args.makeCurrent ? args.username : acc.current
+    await saveAccounts(acc)
+    return { ok: true }
+  },
+  'olap.accounts.remove': async (args) => {
+    const acc = await loadAccounts()
+    acc.accounts = acc.accounts.filter((a) => a.username !== args.username)
+    if (acc.current === args.username) acc.current = acc.accounts.length ? acc.accounts[0].username : ''
+    await saveAccounts(acc)
+    return { ok: true }
+  },
+  'olap.login': async (args) => {
+    const username = args && args.username
+    if (username) {
+      const acc = await loadAccounts()
+      if (acc.current !== username) { acc.current = username; await saveAccounts(acc) }
+      return doLogin(username)
+    }
+    return ensureAuth()
+  },
+  'olap.datasource': async () => req({ path: '/metadata/olap/support/dataSource', method: 'GET', timeout: 30 }),
+  'olap.schemas': async (args) => req({ path: '/metadata/source/' + args.dsId + '/schema?force=true&engine=' + args.engine, method: 'GET', timeout: 30 }),
+  'olap.tables': async (args) => req({ path: '/metadata/source/schema/' + args.schemaId + '/table?force=true&pageSize=100&currPage=1&engine=' + args.engine, method: 'GET', timeout: 60 }),
+  'olap.columns': async (args) => req({ path: '/metadata/source/schema/' + args.schemaId + '/table/' + args.tableId + '/column?force&engine=' + args.engine, method: 'GET', timeout: 60 }),
+  'olap.submit': async (args) => {
+    const p = args.payload || {}
+    return req({ path: '/sql/manager/runSql', method: 'POST', body: runSqlBody(p), timeout: 60 })
+  },
+  'olap.state': async (args) => req({ path: '/sql/manager/checkState', method: 'POST', body: { requestId: args.requestId }, timeout: 30 }),
+  'olap.result': async (args) => req({ path: '/sql/manager/getSqlResult', method: 'POST', body: { requestId: args.requestId, pageNo: args.pageNo || 1, pageSize: Math.min(args.pageSize || 200, 200) }, timeout: 60 }),
+  'olap.log': async (args) => req({ path: '/sql/manager/getLogResult', method: 'POST', body: { requestId: args.requestId }, timeout: 30 }),
+  'olap.kill': async (args) => req({ path: '/cluster/manager/killJob', method: 'POST', body: { requestId: args.requestId, engine: args.engine, dsId: args.dsId }, timeout: 30 }),
+  'olap.run': async (args) => runSqlFull(args.payload || {}, args.timeoutSec),
+  'olap.history': async (args) => req({ path: '/sql/manager/queryHisSqlResult', method: 'POST', body: { pageNum: args.pageNum || 1, pageSize: Math.min(args.pageSize || 20, 100), sqlKeywords: args.sqlKeywords }, timeout: 30 }),
+  'olap.history.fast': async (args) => {
+    // 历史结果快速下载（≤1000 条）：olapResultSimple/{requestId}，命名 olap-<引擎>-<查询id>.<服务端后缀>
+    const rr = await req({ path: '/download/olapResultSimple/' + args.requestId, method: 'GET', binary: true, timeout: 120 })
+    if (rr.ok) rr.filename = downloadName(args.engine, args.requestId, rr.filename)
+    return rr
+  },
+  'olap.history.order': async (args) => {
+    // 历史全量下载 = 提交下载工单（engine: 1=hive, 2=impala），后续到下载页下载
+    const rr = await req({ path: '/approval/createSkipDownloadOrder', method: 'PUT', body: { requestId: args.requestId, engine: Number(args.engine) }, timeout: 30 })
+    return rr
+  },
+  'olap.collect.tree': async () => req({ path: '/user/collect/getAllModelTree', method: 'GET', timeout: 30 }),
+  'olap.collect.dirs': async () => req({ path: '/user/collect/getDir', method: 'GET', timeout: 30 }),
+  'olap.collect.create': async (args) => req({ path: '/user/collect/createNode', method: 'POST', body: args.node, timeout: 30 }),
+  'olap.collect.rename': async (args) => req({ path: '/user/collect/rename/' + args.id + '/' + encodeURIComponent(args.newName), method: 'GET', timeout: 30 }),
+  'olap.collect.delete': async (args) => req({ path: '/user/collect/deleteNode/' + args.id, method: 'GET', timeout: 30 }),
+  'olap.collect.update': async (args) => req({ path: '/user/collect/updateNode', method: 'POST', body: args.patch, timeout: 30 }),
+  'olap.download.create': async (args) => {
+    if (args.kind === 'skip') return req({ path: '/approval/createSkipDownloadOrder', method: 'PUT', body: { requestId: args.requestId, engine: args.engine }, timeout: 30 })
+    if (args.kind === 'middle') return req({ path: '/approval/createMiddleDownloadOrder', method: 'PUT', body: { requestId: args.requestId }, timeout: 30 })
+    return req({ path: '/approval/createOrder', method: 'PUT', body: { querySql: args.querySql, requestId: args.requestId, engine: args.engine }, timeout: 30 })
+  },
+  'olap.download.list': async (args) => req({ path: '/approval/searchSubmitOrder?pageNum=' + (args.pageNum || 1) + '&pageSize=' + (args.pageSize || 20) + '&sortOrder=DESC&sortField=id', method: 'POST', body: {}, timeout: 30 }),
+  'olap.download.detail': async (args) => req({ path: '/approval/detail?approvalId=' + args.approvalId, method: 'GET', timeout: 30 }),
+  'olap.download.file': async (args) => {
+    const orderId = args.id || args.approvalId
+    if (!orderId) return { ok: false, error: 'missing download order id' }
+    const detail = await req({ path: '/approval/detail?approvalId=' + orderId, method: 'GET', timeout: 30 })
+    if (!detail.ok) return detail
+    const d = detail.data || {}
+    const engine = String(d.engine !== undefined && d.engine !== null ? d.engine : args.engine)
+    // 命名 olap-<引擎>-<任务id>.<服务端后缀>：服务端 CD 名是下载时刻的纯时间戳（如 1787823661881.xlsx），
+    // 且 magpie 的 fileName 参数会被服务端忽略，故不再自造名字、也不再传 fileName。
+    const named = (rr) => { if (rr.ok) rr.filename = downloadName(engine, orderId, rr.filename); return rr }
+    if (engine === '1') {
+      return named(await req({ path: '/download/olapResult/' + (d.requestId || ''), method: 'GET', binary: true, timeout: 300 }))
+    }
+    const dlRid = d.downLoadRequestId || d.requestId || ''
+    return named(await req({ path: '/open/api/downloadToExcel?requestId=' + encodeURIComponent(dlRid), base: MAGPIE_BASE, method: 'GET', binary: true, timeout: 300 }))
+  },
+  'olap.download.refresh': async (args) => req({ path: '/download/refresh', method: 'POST', body: { downloadId: args.downloadId }, timeout: 30 }),
+}
+
+const queues = {
+  'olap.panel.register': async (args) => {
+    const sid = args.sessionId
+    if (!panelQueues.has(sid)) panelQueues.set(sid, [])
+    return { ok: true, sessionId: sid }
+  },
+  'olap.panel.state': async (args) => {
+    // 记录「最近一次心跳」的时间戳：面板关掉后会停止上传，lastState 依据时间窗判定在线/离线，
+    // 避免模型继续往已关闭（幽灵）面板写命令。
+    panelStates.set(args.sessionId, { state: args.state, updatedAt: Date.now() })
+    return { ok: true }
+  },
+  'olap.panel.offline': async (args) => {
+    // 面板卸载/页面关闭时主动上报：清掉在线状态与待消费命令，模型 write 立即得到「不在线」。
+    const sid = args.sessionId
+    panelStates.delete(sid)
+    panelQueues.delete(sid)
+    return { ok: true }
+  },
+  'olap.panel.poll': async (args) => {
+    const sid = args.sessionId
+    const list = panelQueues.get(sid) || []
+    panelQueues.set(sid, [])
+    return { ok: true, commands: list }
+  },
+  // ===== WORKSTATION: OLAP 模式状态只读（客户端 chip 轮询用；状态存内存不落日志）=====
+  'olap.mode.get': async (args) => {
+    const sid = String(args && args.sessionId || '')
+    return { ok: true, active: sid ? getOlapModeBySid(sid) : false }
+  },
+}
+// ===== WORKSTATION: workspace 多文件持久化 =====
+function wsSafeFile(name) {
+  // 只允许普通文件名：去掉路径分隔符/目录穿越
+  const s = String(name || '').replace(/[\\/]/g, '_').replace(/\.\.+/g, '').trim()
+  return s || 'unnamed'
+}
+function wsExt(kind) {
+  if (kind === 'sql') return '.sql'
+  if (kind === 'params') return '.json'
+  return '.txt'
+}
+// 工作区按会话隔离：sessionId 传了就落到 ~/.yh-olap/workspace/<sessionId>/{sql,params}/，
+// 不传则用全局旧目录（兼容）。sessionId 会清洗成安全目录名。
+function wsDir(sid, kind) {
+  const sub = kind === 'params' ? 'params' : 'sql'
+  if (sid) {
+    const s = String(sid).replace(/[^a-zA-Z0-9._-]/g, '')
+    if (s) return join(WORKSPACE_ROOT, s, sub)
+  }
+  return join(WORKSPACE_ROOT, sub)
+}
+
+const wsHandlers = {
+  // ── 工作区：多文件（sql/params 两类，互不覆盖）；按 sessionId 隔离 ──
+  'ws.workspace.list': async (args) => {
+    const out = { ok: true, root: WORKSPACE_ROOT, sql: [], params: [] }
+    const kinds = { sql: 'sql', params: 'params' }
+    for (const key of Object.keys(kinds)) {
+      const dir = wsDir(args && args.sessionId, key)
+      try {
+        const ents = await readdir(dir, { withFileTypes: true })
+        const rows = []
+        for (const en of ents) {
+          if (!en.isFile()) continue
+          if (!en.name.endsWith(wsExt(key))) continue
+          const name = en.name.slice(0, en.name.length - wsExt(key).length)
+          let mtime = 0
+          try { mtime = (await stat(join(dir, en.name))).mtimeMs || 0 } catch (e) { /* ignore */ }
+          const row = { name: name, mtime: mtime }
+          // ===== WORKSTATION: SQL 项带标签名（文件名是纯 id，__name 存 params 目录的同名 .json 里）=====
+          if (key === 'sql') {
+            try {
+              const pDir = wsDir(args && args.sessionId, 'params')
+              const p = JSON.parse(await readFile(join(pDir, name + '.json'), 'utf8'))
+              if (p && p.__name) row.displayName = String(p.__name)
+            } catch (e) { /* 无 params 或未解析 */ }
+          }
+          rows.push(row)
+        }
+        rows.sort((a, b) => b.mtime - a.mtime)
+        out[kinds[key]] = rows
+      } catch (e) { out[kinds[key]] = [] }
+    }
+    return out
+  },
+  'ws.workspace.save': async (args) => {
+    const kind = args.kind
+    if (kind !== 'sql' && kind !== 'params') return { ok: false, error: 'bad kind' }
+    const name = wsSafeFile(args.name)
+    const dir = wsDir(args.sessionId, kind)
+    await mkdir(dir, { recursive: true })
+    let content = args.content == null ? '' : String(args.content)
+    if (kind === 'params') {
+      try { content = JSON.stringify(JSON.parse(content), null, 2) } catch (e) { /* keep as-is */ }
+    }
+    await writeFile(join(dir, name + wsExt(kind)), content, 'utf8')
+    return { ok: true, name: name, kind: kind }
+  },
+  'ws.workspace.read': async (args) => {
+    const kind = args.kind
+    if (kind !== 'sql' && kind !== 'params') return { ok: false, error: 'bad kind' }
+    const name = wsSafeFile(args.name)
+    const dir = wsDir(args.sessionId, kind)
+    try {
+      const content = await readFile(join(dir, name + wsExt(kind)), 'utf8')
+      return { ok: true, name: name, kind: kind, content: content }
+    } catch (e) { return { ok: false, error: 'not found' } }
+  },
+  'ws.workspace.remove': async (args) => {
+    const kind = args.kind
+    if (kind !== 'sql' && kind !== 'params') return { ok: false, error: 'bad kind' }
+    const name = wsSafeFile(args.name)
+    const dir = wsDir(args.sessionId, kind)
+    try { await rm(join(dir, name + wsExt(kind))); return { ok: true } } catch (e) { return { ok: false, error: String(e && e.message) } }
+  },
+}
+
+const allHandlers = Object.assign({}, handles, queues, wsHandlers)
+
+function clean(obj) {
+  const out = {}
+  for (const k of Object.keys(obj)) {
+    if (obj[k] !== undefined) out[k] = obj[k]
+  }
+  return out
+}
+function enqueue(sessionId, command) {
+  const sid = sessionId || ''
+  const item = Object.assign({ id: 'c' + (++cmdSeq), ts: Date.now() }, clean(command))
+  if (!panelQueues.has(sid)) panelQueues.set(sid, [])
+  panelQueues.get(sid).push(item)
+  return item
+}
+function lastState(sessionId) {
+  // 面板在线 = 最近 6s 内上传过状态（客户端 1.5s 常驻心跳 + 300ms 变化上传）。
+  // 超时视为面板已关闭/切走，返回 null，防止模型往幽灵面板写命令。
+  const rec = panelStates.get(sessionId)
+  if (!rec) return null
+  if (!(Date.now() - rec.updatedAt <= 6000)) return null
+  return rec.state
+}
+
+const tool = {
+  name: 'olap',
+  description: '操控当前会话右侧栏中的 yh-olap 面板：写 SQL 到编辑器（含指定标签页/光标选定行）、运行、停止、读面板状态。OLAP 面板是右侧栏工具，按会话隔离：从右侧栏「+」或引导页的「OLAP 查询」卡片打开（/olap 模式会自动打开）；write 前需面板在线（先 olap state 确认）。',
+  parameters: {
+    // ===== WORKSTATION: 标准 JSON Schema（顶层 type:'object' + properties + required）。
+    // 原简写映射格式（属性直接平铺）在 commandcode 等第三方模型通道上未被框架转成
+    // 标准函数 schema，模型网关报 "Invalid schema ... got 'type: null'"；
+    // 与其它可用模型工具（如 wiki_*）的参数格式对齐。=====
+    type: 'object',
+    properties: {
+      action: { type: 'string', enum: ['write', 'run', 'stop', 'state', 'refresh'], description: '要执行的操作' },
+      sessionId: { type: 'string', description: '目标会话 id；缺省用当前会话' },
+      tabId: { type: 'number', description: '标签页序号（从 1 开始）；缺省用活动标签' },
+      sql: { type: 'string', description: 'SQL 文本（write/run 时用）' },
+      engine: { type: 'string', description: '引擎类型：1=hive 2=impala 3=clickhouse 4=doris' },
+      dsId: { type: 'number', description: '数据源 id（引擎对应的数据源）' },
+      params: { type: 'array', items: { type: 'object', properties: { id: { type: 'number' }, key: { type: 'string' }, type: { type: 'number' }, value: { type: 'string' } } }, description: 'SQL ${} 参数数组 [{id,key,type,value}]' },
+      // ===== WORKSTATION: additionalProperties 只能是布尔 —— 对象型写法不被 DSH 0.1.7 的
+      // assertSupportedJsonSchema 接受（DSH_TOOLS_MODE=ptc 时会让整个参数 schema 退化成
+      // unknown；0.2.1 起 `both` 模式已被删除，只有 native/ptc）。这里键值都是字符串，改由
+      // description 说明。=====
+      executeConfigs: { type: 'object', additionalProperties: true, description: 'Session 参数（hive 虚拟参数）对象 {key:value}，键与值都是字符串；不传则继承面板该标签上已勾选的 Session 参数' },
+      lines: { type: 'array', items: { type: 'number' }, description: '只运行光标选定的行 [startLine, endLine]（1-based，闭区间）' },
+      newTab: { type: 'boolean', description: 'write 时 true 表示新建一个标签并写入（自动激活），不覆盖现有标签' },
+      timeoutSec: { type: 'number', description: 'run 等待超时秒数，默认 300' },
+    },
+    required: ['action'],
+  },
+  output: {
+    schema: { type: 'object', properties: { ok: { type: 'boolean' }, message: { type: 'string' }, data: { type: 'object', additionalProperties: true } }, additionalProperties: true },
+    render: (args, value) => [{ type: 'text', text: value.summary || JSON.stringify(value) }],
+  },
+  async execute(args, exec) {
+    const currentSid = exec && exec.agent ? exec.agent.id : undefined
+    const sid = args.sessionId || currentSid
+    if (!sid) return { ok: false, error: 'no sessionId and no current agent session' }
+    const auth = await ensureAuth()
+    if (!auth.ok) return { ok: false, error: auth.error || 'auth failed' }
+
+    if (args.action === 'refresh') {
+      const r = await ensureAuth()
+      return { ok: true, summary: 'auth: ' + (jsidCache ? 'ok' : 'fail'), data: { username: accountCache, org: orgCache } }
+    }
+    if (args.action === 'state') {
+      const st = lastState(sid)
+      const data = st || { tabs: [], activeTab: 0 }
+      let summary
+      if (!st) {
+        summary = 'panel not online in that session (no heartbeat); open the OLAP panel from the right sidebar "+" → "OLAP 查询" first'
+      } else if (args.tabId) {
+        const t = st.tabs.find(function (x) { return x.id === args.tabId })
+        if (!t) {
+          summary = 'no tab#' + args.tabId + '; existing tabs: ' + st.tabs.map(function (x) { return x.id }).join(',')
+        } else {
+          let sqlShow = t.sql || ''
+          let lineNote = ''
+          // ===== WORKSTATION: state 支持 lines 区间读取（配合「引用选中 SQL」行区间块）。
+          // 用户右键引用 @olapN:L3-10 后，模型 state {tabId, lines:[3,10]} 精确读该段。=====
+          if (args.lines && Array.isArray(args.lines) && args.lines.length === 2) {
+            const arr = (t.sql || '').split('\n')
+            const ls = Math.max(1, args.lines[0]), le = Math.min(arr.length, args.lines[1])
+            sqlShow = arr.slice(ls - 1, le).join('\n')
+            lineNote = ' lines=' + ls + '-' + le
+          }
+          summary = 'tab#' + t.id + ' ' + (t.name || '') + (t.id === st.activeTab ? '(active)' : '') + ' engine=' + t.engine + (t.running ? ' RUNNING' : '') + ' finish=' + (t.finish || '') + lineNote + sessNote(t) + '\nsql=' + JSON.stringify(sqlShow)
+        }
+      } else {
+        summary = 'tabs=' + st.tabs.length + ' active=' + st.activeTab + ' account=' + (st.currentAccount || '') + '\n' + st.tabs.map(function (t) {
+          return '  #' + t.id + ' ' + (t.name || '') + (t.id === st.activeTab ? '(active)' : '') + ' engine=' + t.engine + (t.running ? ' RUNNING' : '') + (t.finish ? ' finish=' + t.finish : '') + sessNote(t) + '\n    sql=' + JSON.stringify((t.sql || '').slice(0, 300))
+        }).join('\n')
+      }
+      return { ok: true, summary, data }
+    }
+    if (args.action === 'write') {
+      // ===== WORKSTATION: 入队前检测面板是否在线（最近 6s 内上传过状态）。
+      // 面板不在线（未打开/切走/刚刷新未挂载）时，write 命令会滞留队列无人消费，
+      // 模型却收到 queued 误报"已填入"——返回明确错误让模型先让用户打开面板。
+      // 注意 panelStates 无记录/已超时 ≠ 一定不在线（挂载早期），但保守提示比假阳性好。=====
+      const last = lastState(sid)
+      if (!last) {
+        return { ok: false, error: 'OLAP 面板不在线（该会话未检测到打开的面板）。请在右侧栏打开 OLAP 工具（右侧栏 + → OLAP 查询）后重新 write。' }
+      }
+      const targetTab = args.tabId
+        ? last.tabs.find(function (t) { return t.id === args.tabId })
+        : (last.tabs.find(function (t) { return t.id === last.activeTab }) || (last.tabs && last.tabs[0]))
+      if (!targetTab && !args.newTab) {
+        return { ok: false, error: '面板在线但找不到目标标签（tabs=' + (last.tabs || []).length + '）。请用 olap state 确认标签 id 后带 tabId 重试，或 newTab:true 新建。' }
+      }
+      const item = enqueue(sid, { type: 'write', tabId: args.tabId, sql: args.sql, lines: args.lines, newTab: !!args.newTab })
+      // 目标标签名（供模型向用户确认写到了哪个标签）
+      const tabName = targetTab ? (targetTab.name || ('Tab' + targetTab.id)) : ''
+      return { ok: true, summary: 'write 命令已入队，目标=' + (args.newTab ? '新建标签' : ('标签#' + (targetTab ? targetTab.id : '?'))) + (tabName ? '（' + tabName + '）' : '') + '，面板在线，约 1~2 秒内上屏。**注意：入队≠已上屏，请随后用 olap state 确认 SQL 已写入编辑器，若未写入请告知用户刷新面板。**', data: { commandId: item.id, ...(targetTab ? { targetTabId: targetTab.id } : {}) } }
+    }
+    if (args.action === 'run') {
+      let sqlText = args.sql
+      let engine = args.engine
+      let dsId = args.dsId
+      let params = args.params || []
+      const st = lastState(sid)
+      const tb = st && st.tabs
+        ? (args.tabId ? st.tabs.find((t) => t.id === args.tabId) : st.tabs.find((t) => t.id === st.activeTab) || st.tabs[0])
+        : undefined
+      if (tb) {
+        if (engine === undefined) engine = tb.engine
+        if (dsId === undefined) dsId = tb.dsId
+        if (!params.length && tb.params && typeof tb.params === 'object') params = tb.params
+      }
+      if (sqlText === undefined || sqlText === null || sqlText === '') {
+        if (tb) {
+          let s = tb.sql || ''
+          if (args.lines && args.lines.length === 2) {
+            const linesArr = s.split('\n')
+            s = linesArr.slice(args.lines[0] - 1, args.lines[1]).join('\n')
+          }
+          sqlText = s
+        }
+        if (!sqlText) return { ok: false, error: 'no sql provided and no panel state for ' + sid }
+      }
+      if (engine === undefined) engine = '2'
+      if (dsId === undefined) dsId = 2
+      // Session 参数：显式传入优先；否则继承面板标签上勾选的 Session 参数（与 engine/dsId/params 一致）
+      let executeConfigs = args.executeConfigs
+      if (executeConfigs === undefined && tb && Array.isArray(tb.sessionConfigs)) executeConfigs = tb.sessionConfigs
+      const payload = { sql: sqlText, engine, dsId, params, executeConfigs }
+      const res = await runSqlFull(payload, args.timeoutSec || 300)
+      if (res.ok && res.finish === 'ok') {
+        enqueue(sid, { type: 'reflect', tabId: args.tabId, sql: sqlText, engine, dsId, result: res.result, log: res.log, executeId: res.executeId })
+      }
+      const cols = (res.result && res.result.columnNameList) || []
+      const rows = (res.result && res.result.list) || []
+      const total = (res.result && res.result.total !== undefined) ? res.result.total : rows.length
+      const errTxt = res.error || res.errMsg || ''
+      const summary = 'executeId=' + (res.executeId || '') + ' finish=' + (res.finish || '') + (errTxt ? ' err=' + errTxt : '') + (res.finish === 'ok' ? (' columns=' + cols.length + ' rows(preview)=' + rows.length + ' total=' + total) : '')
+      return { ok: !!(res.ok && res.finish === 'ok'), summary, data: { executeId: res.executeId || '', finish: res.finish || '', errMsg: errTxt, columns: cols, rows: rows.slice(0, 200), total: total, log: res.log || '' } }
+    }
+    if (args.action === 'stop') {
+      const item = enqueue(sid, { type: 'stop', tabId: args.tabId })
+      return { ok: true, summary: 'queued stop to ' + sid + (args.tabId ? ' tab ' + args.tabId : ' active tab'), data: { commandId: item.id } }
+    }
+    return { ok: false, error: 'unknown action ' + args.action }
+  },
+}
+
+// ===== OLAP 模式（/olap 命令 + 常驻指引，仿 dsh plan-mode）=====
+const OLAP_MODE_GUIDE = [
+  '[OLAP 模式] 用户正在操作 yh-olap 右侧栏工具，以下行为在本次对话中持续有效：',
+  '1. 面板位置：OLAP 是右侧栏工具（从右侧栏「+」或引导页的「OLAP 查询」卡片打开，/olap 模式会自动打开），面板按会话隔离。操作前先调用 olap state 看当前会话面板状态（所有标签的 SQL/引擎/数据源/运行状态）；state 报面板不在线时，提示用户在右侧栏「+」→ OLAP 查询打开面板。',
+  '2. 写 SQL 前先查 llm-wiki：wiki_list（看全貌）→ wiki_search（指标/字段/表名）→ wiki_get 读命中的表（字段清单）与口径/示例（唯一来源表），并留意自动附带的坑点。不命中先探查（DESCRIBE + 抽样），表用 wiki_create(type: Table)、坑点用 wiki_create(type: Pitfall) 记录；新建/修改口径先给用户确认，确认后带 confirmed 写入。',
+  '3. 引擎选择：探查/预览/小表默认 impala engine=2（快，但不支持 DDL）；大表 join/ETL/DDL 用 hive engine=1（impala 不支持 DDL，一律 hive）；超大聚合用 clickhouse engine=3；其他用 doris engine=4。',
+  '4. SQL 风格：前置逗号（,field2），关键字小写，4 空格缩进，from 与表名同行，日期变量用 ${var} 占位。',
+  '5. 修改/填入 SQL：先 olap state 读取编辑器当前 SQL（含用户手动编辑的最新内容），基于它修改，再 olap.write {tabId, sql} 写回。**write 只返回"已入队"，不代表已上屏——write 后必须再次 olap state 验证目标标签的 sql 已变成你写入的内容**；若 state 仍显示旧值/为空，说明面板未同步（未打开/刚刷新/会话错位），应告知用户在右侧栏打开 OLAP 工具（右侧栏 + → OLAP 查询）或刷新后重试，绝不能谎报"已填入"。只按要求修改，不主动运行。',
+  '6. 新建需求：先 olap state 判断活动标签是否已有代码；有代码则 olap.write {newTab:true, sql} 新建标签，不覆盖现有。新建后同样要 state 验证新标签已出现且 SQL 已写入。',
+  '7. 多标签/片段引用：olap state 返回每个标签的 #id/SQL/引擎/状态；olap state/write/run/stop 都支持 tabId（从 1 开始）指定要读取、编辑、运行的标签，缺省用活动标签。用户消息里的 @olapN 或 @TabN（N 为标签 id，如 @olap3/@Tab3=标签 #3）表示引用面板标签 #N；**带行区间的 @olapN:Lx-y（如 @olap3:L3-10）表示用户指定了该标签的第 x~y 行**——需要读取该片段内容时用 olap state {tabId:N, lines:[x,y]}（返回仅该区间的 SQL）；需要修改该片段用 olap.write {tabId, lines, sql}（按行替换）。',
+  '8. 运行：只有用户要求运行/看结果时才 olap run（不传 sql 跑指定/活动标签；engine/dsId 自动继承面板，缺省 impala engine=2 dsId=2、hive engine=1；hive 的 Session 参数/虚拟参数同样继承面板该标签已勾选的项，也可用 executeConfigs 显式传 {key:value}）。**若 run 前刚 write 过，先 state 确认 SQL 已在编辑器再 run**（避免跑到旧内容）。',
+  '9. 安全与样本：先 LIMIT/小样本预览再跑全量；DROP/DELETE/TRUNCATE、INSERT 覆盖等写操作先向用户说明影响并确认后再执行。',
+  '10. 本模式只做 SQL 编辑与执行：除非用户明确要求分析/解读，禁止对查询数据做主动分析、总结或建议；run 结果按需汇报 columns/rows/total/executeId 即可。',
+  '11. 历史/下载/工单等操作也通过 olap 工具完成。',
+].join('\n')
+
+// ===== WORKSTATION: OLAP 模式状态存内存（不 append session 事件）。
+// 原实现 session.append('olap/mode') 会把自定义事件持久化进会话日志，但框架的
+// session-persistence 读取校验只认 KNOWN_SESSION_EVENT_TYPES，不认 'olap/mode'，
+// 导致所有含该事件的历史会话加载报 SessionFormatUnsupportedError（用户实测
+// "历史会话载入经常报错"）。append API 也无法标记 ignorable → 改为内存 Map
+// 存 sid→mode，不污染日志。重启后模式默认关闭（用户重新 /olap 开启即可）。
+const olapModeBySid = new Map() // sessionId 字符串 → boolean
+function getOlapModeBySid(sid) { return olapModeBySid.get(sid) === true }
+function setOlapModeMem(sid, active) {
+  if (active) olapModeBySid.set(sid, true)
+  else olapModeBySid.delete(sid)
+}
+function getOlapMode(session) { return !!session && getOlapModeBySid(session.id) }
+function foldOlapMode(session) {
+  return !!session && getOlapModeBySid(session.id)
+}
+function hasOpenTurn(events) {
+  let open = false
+  for (const ev of events) {
+    if (ev.type === 'turn/start') open = true
+    else if (ev.type === 'turn/end') open = false
+  }
+  return open
+}
+/** 内联构造 user 消息（避免静态 bundle 环境 import @deepseek-ai 失败）。 */
+function inlineUserMessage(text) {
+  return {
+    id: 'yh_olap_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10),
+    role: 'user',
+    content: [{ type: 'text', text: text }],
+    source: { kind: 'user' },
+  }
+}
+function setOlapMode(agent, active, pendingIntents) {
+  const session = agent.session
+  const pending = pendingIntents.get(session)
+  const target = pending ? pending.active : getOlapModeBySid(session.id)
+  if (active === target) return 'noop'
+  if (hasOpenTurn(session.snapshotEvents())) {
+    pendingIntents.set(session, { active })
+    return getOlapModeBySid(session.id) === active ? 'cancelled' : 'queued'
+  }
+  if (active === getOlapModeBySid(session.id)) {
+    pendingIntents.delete(session)
+    return 'cancelled'
+  }
+  setOlapModeMem(session.id, active)
+  pendingIntents.delete(session)
+  return 'committed'
+}
+function registerOlapMode(ctx, disposers) {
+  const pendingIntents = new WeakMap()
+  try {
+    const offPre = ctx.on('agent/pre-step', async ({ agent, signal }, next) => {
+      const decision = await next()
+      const pending = pendingIntents.get(agent.session)
+      if (decision.kind === 'reject' || signal.aborted || pending === undefined) return decision
+      try {
+        if (pending.active !== foldOlapMode(agent.session)) {
+          setOlapModeMem(agent.session.id, pending.active)
+        }
+        pendingIntents.delete(agent.session)
+      } catch (error) {
+        ctx.logger && ctx.logger.warn('yh-olap: set olap mode failed: %o', error)
+      }
+      return decision
+    })
+    if (offPre) disposers.push(offPre)
+    ctx.inject(['systemPrompt'], (sub) => {
+      const off = sub.systemPrompt.section({
+        name: 'olap:policy',
+        order: 50,
+        text: (context) => {
+          if (context.agent === undefined) return ''
+          return foldOlapMode(context.agent.session) ? OLAP_MODE_GUIDE : ''
+        },
+      })
+      if (off) disposers.push(off)
+    })
+    ctx.inject(['commands'], (sub) => {
+      const off = sub.commands.register({
+        name: 'olap',
+        description: '进入/退出 OLAP 模式：激活后聊天输入框出现 OLAP 标签，期间指令都按操作 yh-olap 面板处理',
+        input: { hint: '[off|第一条消息]' },
+        handler: async ({ agent, rawInput }) => {
+          const message = rawInput.trim()
+          const leaving = message === 'off'
+          setOlapMode(agent, !leaving, pendingIntents)
+          if (!leaving && message !== '') {
+            // 仿 /plan：/olap <内容> 进入模式的同时把内容注入对话，
+            // 空会话也能"一起发送"并触发正常渲染（turn 打开、hero 退出）。
+            // 优先用官方 createUserMessage；import 不可用（静态 bundle 环境）时回退内联构造。
+            let injected = false
+            try {
+              const mod = await import('@deepseek-ai/dsh-llm')
+              if (mod && typeof mod.createUserMessage === 'function') {
+                agent.steer(mod.createUserMessage({
+                  content: [{ type: 'text', text: message }],
+                  source: { kind: 'user' },
+                }))
+                injected = true
+              }
+            } catch (e) { /* fall through to inline */ }
+            if (!injected) {
+              try {
+                agent.steer(inlineUserMessage(message))
+              } catch (e2) {
+                ctx.logger && ctx.logger.warn('yh-olap: inject /olap message failed: ' + (e2 && e2.message))
+              }
+            }
+          }
+          return {
+            kind: 'success',
+            text: leaving
+              ? '已退出 OLAP 模式。'
+              : (message ? '已进入 OLAP 模式，并按你的消息继续。' : '已进入 OLAP 模式：聊天输入框出现 OLAP 标签，期间你的指令都按操作 yh-olap 面板处理。'),
+          }
+        },
+      })
+      if (off) disposers.push(off)
+    })
+  } catch (e) {
+    ctx.logger && ctx.logger.warn('yh-olap: olap mode init error: ' + (e && e.message))
+  }
+}
+
+// ===== WORKSTATION: RPC CORS（桌面 App / 本机 Web 的右侧栏工具跨源调用）=====
+// 桌面 Electron 页面 origin 是 dsh-app://app，客户端会 fetch 本机传输层的
+// /api/yh-olap/rpc —— 跨源请求需要 CORS 响应头（含 OPTIONS 预检）。
+// 白名单（大小写不敏感）：dsh-app://app；http(s):// 的 127.0.0.1 / localhost / [::1]（可带端口）。
+// 只回显精确 origin，不发 access-control-allow-credentials。
+const CORS_ALLOWED_ORIGIN = /^(?:dsh-app:\/\/app|https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?)$/i
+
+/** 纯函数：返回该请求应带的 CORS 响应头；无 Origin 或 origin 不在白名单时返回 null。 */
+function corsHeadersFor(request) {
+  const origin = request && request.headers ? request.headers.origin : undefined
+  if (typeof origin !== 'string' || !CORS_ALLOWED_ORIGIN.test(origin)) return null
+  return {
+    'access-control-allow-origin': origin,
+    'access-control-allow-methods': 'POST, OPTIONS',
+    'access-control-allow-headers': 'content-type',
+    'access-control-max-age': '600',
+    vary: 'Origin',
+    'cache-control': 'no-store',
+  }
+}
+
+/** 仅回环地址放行（浏览器同源请求）。 */
+function isLoopbackRequest(request) {
+  const address = request.socket && request.socket.remoteAddress
+  if (address !== '127.0.0.1' && address !== '::1' && address !== '::ffff:127.0.0.1') return false
+  return true
+}
+function replyJson(res, status, body, cors) {
+  const headers = Object.assign({
+    'content-type': 'application/json; charset=utf-8',
+    'referrer-policy': 'no-referrer',
+  }, cors || {})
+  res.writeHead(status, headers)
+  res.end(JSON.stringify(body))
+}
+async function readJsonBody(req2) {
+  const chunks = []
+  let size = 0
+  for await (const chunk of req2) {
+    size += chunk.length
+    if (size > 16 * 1024 * 1024) return undefined
+    chunks.push(chunk)
+  }
+  try {
+    const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    return typeof parsed === 'object' && parsed !== null ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export function apply(ctx, _config) {
+  const disposers = []
+  disposers.push(ctx.webServer.register({
+    kind: 'exact',
+    path: '/api/yh-olap/rpc',
+    handler: async (req2, res) => {
+      const cors = corsHeadersFor(req2)
+      // OPTIONS 预检：合法 origin → 204 + 允许头；不合法 → 403（预检不带凭据，不需要回环校验）。
+      if (req2.method === 'OPTIONS') {
+        if (!cors) { replyJson(res, 403, { ok: false, error: 'origin not allowed' }); return }
+        res.writeHead(204, cors)
+        res.end()
+        return
+      }
+      if (!isLoopbackRequest(req2)) { replyJson(res, 403, { ok: false, error: 'loopback-only' }, cors); return }
+      if (req2.method !== 'POST') { replyJson(res, 405, { ok: false, error: 'method not allowed' }, cors); return }
+      const body = await readJsonBody(req2)
+      if (!body || typeof body.method !== 'string') { replyJson(res, 400, { ok: false, error: 'bad rpc body' }, cors); return }
+      const fn = allHandlers[body.method]
+      if (!fn) { replyJson(res, 404, { ok: false, error: 'no handler: ' + body.method }, cors); return }
+      try {
+        const result = await fn(body.args || {})
+        replyJson(res, 200, result === undefined ? {} : result, cors)
+      } catch (e) {
+        replyJson(res, 200, { ok: false, error: String(e && e.message) }, cors)
+      }
+    },
+  }))
+  ctx.tools.register(tool)
+  try {
+    registerOlapMode(ctx, disposers)
+  } catch (e) {
+    ctx.logger && ctx.logger.warn('yh-olap: olap mode init skipped: ' + (e && e.message))
+  }
+  return function dispose() {
+    for (const d of disposers) { try { d() } catch {} }
+  }
+}

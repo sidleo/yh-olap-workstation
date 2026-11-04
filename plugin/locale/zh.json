@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "OLAP 查询工具",
+    "description": "在右侧栏打开永辉 OLAP：SQL 编辑（impala/hive 引擎词表与补全）、执行、结果、历史与下载。按会话自动保存。"
+  }
+}

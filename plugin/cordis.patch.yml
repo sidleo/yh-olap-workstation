@@ -1,0 +1,9 @@
+# dsh-yh-olap-workstation bundle patch
+#
+# 安装：把本包加入某个 DSH profile 的 dsh.profile.bundles（或在桌面 App 里用
+# 插件管理器安装），Host 半注册 /api/yh-olap/rpc 与 `olap` 模型工具，Client 半在
+# 右侧栏注册一个 kind='olap' 的工具 tab。本文件只插入插件自身，不修改任何 profile
+# 级配置（不写 preset / 不改默认 preset / 不覆盖路由）。
+- insert:
+    - id: yh-olap-workstation
+      name: dsh-yh-olap-workstation

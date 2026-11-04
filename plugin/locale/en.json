@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "OLAP Query Tool",
+    "description": "Yonghui OLAP in the right sidebar: SQL editor with Impala/Hive word lists and completion, execution, results, history and downloads. Auto-saved per session."
+  }
+}

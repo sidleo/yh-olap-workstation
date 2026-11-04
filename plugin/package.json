@@ -1,0 +1,67 @@
+{
+  "name": "dsh-yh-olap-workstation",
+  "version": "1.0.0",
+  "description": "yh-olap 右侧栏工具：永辉 OLAP 的 SQL 编辑/执行/结果面板（per-session 持久化，impala/hive 引擎词表与补全）。",
+  "type": "module",
+  "main": "./src/host.js",
+  "exports": {
+    ".": "./src/host.js",
+    "./client": "./dist/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "dist",
+    "locale",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node --check src/host.js && node --check dist/client.js",
+    "test:unit": "node --test ../test/unit/*.test.mjs",
+    "prepack": "npm run build"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis",
+    "plugin",
+    "olap",
+    "sql",
+    "workstation",
+    "yonghui"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/dsh": "^0.2.0-rc.1"
+  },
+  "devDependencies": {
+    "@codemirror/lang-sql": "6.10.0",
+    "codemirror": "6.0.2",
+    "esbuild": "0.24.2"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [],
+      "platform": "web"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sidleo/yh-olap-workstation.git",
+    "directory": "plugin"
+  },
+  "homepage": "https://github.com/sidleo/yh-olap-workstation",
+  "bugs": {
+    "url": "https://github.com/sidleo/yh-olap-workstation/issues"
+  },
+  "author": "sidleo"
+}
